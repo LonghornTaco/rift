@@ -1,0 +1,583 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { RiftPreset, RiftEnvironment, MigrationPath, TreeNode, SiteInfo } from '@/lib/rift/types';
+import { getEnvironments, getPresets, savePreset } from '@/lib/rift/storage';
+import { authenticate } from '@/lib/rift/sitecore-auth';
+import { fetchSites } from '@/lib/rift/api-client';
+import { RiftContentTree } from './RiftContentTree';
+import { RiftSelectionPanel } from './RiftSelectionPanel';
+import { RiftConfirmDialog } from './RiftConfirmDialog';
+import { RiftProgressOverlay, MigrationMessage } from './RiftProgressOverlay';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+
+interface RiftMigrateProps {
+  loadedPreset: RiftPreset | null;
+  onBack: () => void;
+  batchSize?: number;
+}
+
+export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigrateProps) {
+  const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
+  const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
+  const [selectedSiteRootPath, setSelectedSiteRootPath] = useState<string | null>(null);
+  const [selectedTargetEnvId, setSelectedTargetEnvId] = useState<string | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<MigrationPath[]>(
+    loadedPreset?.paths ?? []
+  );
+
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [sites, setSites] = useState<(SiteInfo & { collection: string })[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [pendingSiteRootPath, setPendingSiteRootPath] = useState<string | null>(null);
+  const [loadedTreeNodes, setLoadedTreeNodes] = useState<Map<string, TreeNode[]>>(new Map());
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
+  const [migrationComplete, setMigrationComplete] = useState(false);
+  const [showPresetInput, setShowPresetInput] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [overwritePresetId, setOverwritePresetId] = useState<string | null>(null);
+  const [confirmingOverwrite, setConfirmingOverwrite] = useState(false);
+  const [existingPresets, setExistingPresets] = useState<RiftPreset[]>([]);
+  const [isRestoringPreset, setIsRestoringPreset] = useState(!!loadedPreset?.sourceEnvId);
+  // Track whether we're still waiting for the full workspace to be ready
+  const isWorkspaceLoading = isRestoringPreset || (!!loadedPreset?.sourceEnvId && isLoadingSites) || (!!loadedPreset?.siteRootPath && pendingSiteRootPath !== null);
+
+  const handleChildrenLoaded = useCallback((parentPath: string, children: TreeNode[]) => {
+    setLoadedTreeNodes((prev) => new Map(prev).set(parentPath, children));
+  }, []);
+
+  const handleTogglePath = useCallback(
+    (node: TreeNode) => {
+      setSelectedPaths((prev) => {
+        const exists = prev.find((p) => p.itemPath === node.path);
+        if (exists) {
+          return prev.filter((p) => p.itemPath !== node.path);
+        }
+        return [...prev, { itemPath: node.path, itemId: node.itemId, scope: 'ItemAndDescendants' }];
+      });
+    },
+    []
+  );
+
+  const handleRemovePath = useCallback((itemPath: string) => {
+    setSelectedPaths((prev) => prev.filter((p) => p.itemPath !== itemPath));
+  }, []);
+
+  const handleChangeScope = useCallback((itemPath: string, scope: MigrationPath['scope']) => {
+    setSelectedPaths((prev) =>
+      prev.map((p) => (p.itemPath === itemPath ? { ...p, scope } : p))
+    );
+  }, []);
+
+  const handleSavePreset = useCallback(() => {
+    setShowPresetInput(true);
+    setPresetName('');
+    setOverwritePresetId(null);
+    setConfirmingOverwrite(false);
+    setExistingPresets(getPresets());
+  }, []);
+
+  const confirmSavePreset = useCallback(() => {
+    if (!presetName.trim() && !overwritePresetId) return;
+    const preset: RiftPreset = {
+      id: overwritePresetId ?? crypto.randomUUID(),
+      name: presetName.trim() || existingPresets.find((p) => p.id === overwritePresetId)?.name || 'Unnamed',
+      paths: selectedPaths,
+      lastUsed: new Date().toISOString(),
+      sourceEnvId: selectedEnvId ?? undefined,
+      targetEnvId: selectedTargetEnvId ?? undefined,
+      siteRootPath: selectedSiteRootPath ?? undefined,
+    };
+    savePreset(preset);
+    setShowPresetInput(false);
+    setPresetName('');
+    setOverwritePresetId(null);
+  }, [presetName, overwritePresetId, existingPresets, selectedPaths, selectedEnvId, selectedTargetEnvId, selectedSiteRootPath]);
+
+  const inheritedPaths = useMemo(() => {
+    const inherited = new Set<string>();
+    for (const sp of selectedPaths) {
+      if (sp.scope === 'SingleItem') continue;
+
+      if (sp.scope === 'ItemAndDescendants') {
+        // Check all loaded nodes — any whose path starts with selectedPath + "/" is inherited
+        for (const [, children] of loadedTreeNodes) {
+          for (const child of children) {
+            if (child.path !== sp.itemPath && child.path.startsWith(sp.itemPath + '/')) {
+              inherited.add(child.path);
+            }
+          }
+        }
+      } else if (sp.scope === 'ItemAndChildren') {
+        // Only direct children of the selected node
+        const directChildren = loadedTreeNodes.get(sp.itemPath);
+        if (directChildren) {
+          for (const child of directChildren) {
+            inherited.add(child.path);
+          }
+        }
+      }
+    }
+    // Don't mark explicitly selected items as inherited
+    for (const sp of selectedPaths) {
+      inherited.delete(sp.itemPath);
+    }
+    return inherited;
+  }, [selectedPaths, loadedTreeNodes]);
+
+  useEffect(() => {
+    setEnvironments(getEnvironments());
+  }, []);
+
+  const handleEnvChange = useCallback(
+    async (envId: string) => {
+      setSelectedEnvId(envId);
+      setSelectedSiteRootPath(null);
+      setSites([]);
+      setAccessToken(null);
+      setAuthError(null);
+
+      if (!envId) return;
+
+      const env = getEnvironments().find((e) => e.id === envId);
+      if (!env) return;
+
+      // Clear target if it matches the new source
+      if (selectedTargetEnvId === envId) {
+        setSelectedTargetEnvId(null);
+      }
+
+      try {
+        setIsLoadingSites(true);
+        const result = await authenticate(env.clientId, env.clientSecret);
+        setAccessToken(result.accessToken);
+        const fetchedSites = await fetchSites(env.cmUrl, result.accessToken);
+        setSites(fetchedSites);
+      } catch (err) {
+        setAuthError(err instanceof Error ? err.message : 'Authentication failed');
+        setSites([]);
+        setAccessToken(null);
+      } finally {
+        setIsLoadingSites(false);
+      }
+    },
+    [selectedTargetEnvId]
+  );
+
+  // Sync state when loadedPreset changes (e.g. loading from Presets page)
+  useEffect(() => {
+    if (!loadedPreset) return;
+    if (loadedPreset.paths) {
+      setSelectedPaths(loadedPreset.paths);
+    }
+    if (loadedPreset.sourceEnvId) {
+      handleEnvChange(loadedPreset.sourceEnvId);
+    }
+    if (loadedPreset.targetEnvId) {
+      setSelectedTargetEnvId(loadedPreset.targetEnvId);
+    }
+    if (loadedPreset.siteRootPath) {
+      setPendingSiteRootPath(loadedPreset.siteRootPath);
+    }
+  }, [loadedPreset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply pending site selection once sites finish loading
+  useEffect(() => {
+    if (pendingSiteRootPath && sites.length > 0 && !isLoadingSites) {
+      const match = sites.find((s) => s.rootPath === pendingSiteRootPath);
+      if (match) {
+        setSelectedSiteRootPath(pendingSiteRootPath);
+      }
+      setPendingSiteRootPath(null);
+      setIsRestoringPreset(false);
+    }
+  }, [pendingSiteRootPath, sites, isLoadingSites]);
+
+  // Also clear restoring state if there's no pending site (preset had no site saved)
+  useEffect(() => {
+    if (isRestoringPreset && !pendingSiteRootPath && !isLoadingSites && selectedEnvId) {
+      setIsRestoringPreset(false);
+    }
+  }, [isRestoringPreset, pendingSiteRootPath, isLoadingSites, selectedEnvId]);
+
+  const targetEnvironments = environments.filter(
+    (e) => e.id !== selectedEnvId && e.allowWrite
+  );
+
+  const canStartMigration =
+    selectedEnvId && selectedSiteRootPath && selectedTargetEnvId && selectedPaths.length > 0 && !isMigrating;
+
+  const canSavePreset = selectedPaths.length > 0;
+
+  if (isWorkspaceLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center flex-1 gap-4 text-muted-foreground">
+        <svg className="animate-spin h-12 w-12" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        <span className="text-base">
+          {isLoadingSites ? 'Connecting to environment...' : 'Loading preset...'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Top Bar */}
+      <div className="bg-card border-b border-border px-5 py-3 flex items-center gap-4 shrink-0">
+        {/* Back button */}
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          &larr; Back
+        </Button>
+
+        {/* Environment */}
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground mb-0.5">ENVIRONMENT</div>
+          <Select value={selectedEnvId ?? undefined} onValueChange={handleEnvChange} disabled={isMigrating}>
+            <SelectTrigger size="sm">
+              <SelectValue placeholder="Select environment..." />
+            </SelectTrigger>
+            <SelectContent>
+              {environments.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Site */}
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground mb-0.5">SITE</div>
+          <Select
+            value={selectedSiteRootPath ?? undefined}
+            onValueChange={(val) => setSelectedSiteRootPath(val)}
+            disabled={!selectedEnvId || isLoadingSites || isMigrating}
+          >
+            <SelectTrigger size="sm">
+              <SelectValue
+                placeholder={
+                  isLoadingSites
+                    ? 'Loading sites...'
+                    : !selectedEnvId
+                      ? 'Select environment first'
+                      : 'Select site...'
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {sites.map((site) => (
+                <SelectItem key={site.rootPath} value={site.rootPath}>
+                  {site.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Arrow separator */}
+        <div className="text-lg text-muted-foreground">&rarr;</div>
+
+        {/* Target */}
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground mb-0.5">TARGET</div>
+          <Select value={selectedTargetEnvId ?? undefined} onValueChange={(val) => setSelectedTargetEnvId(val)} disabled={isMigrating}>
+            <SelectTrigger size="sm">
+              <SelectValue placeholder="Select target..." />
+            </SelectTrigger>
+            <SelectContent>
+              {targetEnvironments.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Auth error */}
+        {authError && (
+          <div className="text-xs text-destructive max-w-[200px]">{authError}</div>
+        )}
+
+        {/* Save Preset */}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!canSavePreset}
+          onClick={handleSavePreset}
+        >
+          {'\u2605'} Save Preset
+        </Button>
+
+        {/* Start Migration */}
+        <Button
+          size="sm"
+          disabled={!canStartMigration}
+          onClick={() => {
+            if (canStartMigration) {
+              setShowConfirmDialog(true);
+            }
+          }}
+        >
+          {'\u26A1'} Start Migration
+        </Button>
+      </div>
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && selectedEnvId && selectedTargetEnvId && (
+        <RiftConfirmDialog
+          sourceName={environments.find((e) => e.id === selectedEnvId)?.name ?? selectedEnvId}
+          targetName={environments.find((e) => e.id === selectedTargetEnvId)?.name ?? selectedTargetEnvId}
+          paths={selectedPaths}
+          onCancel={() => setShowConfirmDialog(false)}
+          onConfirm={async () => {
+            setShowConfirmDialog(false);
+            setIsMigrating(true);
+            setMigrationMessages([]);
+            setMigrationComplete(false);
+
+            try {
+              const sourceEnv = environments.find((e) => e.id === selectedEnvId);
+              const targetEnv = environments.find((e) => e.id === selectedTargetEnvId);
+              if (!sourceEnv || !targetEnv) return;
+
+              console.log('[Rift] Starting migration with', selectedPaths.length, 'paths...');
+
+              const response = await fetch('/api/rift/migrate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  source: {
+                    cmUrl: sourceEnv.cmUrl,
+                    clientId: sourceEnv.clientId,
+                    clientSecret: sourceEnv.clientSecret,
+                  },
+                  target: {
+                    cmUrl: targetEnv.cmUrl,
+                    clientId: targetEnv.clientId,
+                    clientSecret: targetEnv.clientSecret,
+                  },
+                  paths: selectedPaths.map((p) => ({
+                    itemPath: p.itemPath,
+                    scope: p.scope,
+                  })),
+                  batchSize,
+                }),
+              });
+
+              if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                setMigrationMessages((prev) => [
+                  ...prev,
+                  { type: 'error', message: errData.error || `Request failed: ${response.status}` },
+                ]);
+                setMigrationComplete(true);
+                setIsMigrating(false);
+                return;
+              }
+
+              // Read the NDJSON stream
+              const reader = response.body!.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                  if (line.trim()) {
+                    try {
+                      const msg = JSON.parse(line) as MigrationMessage;
+                      console.log('[Rift] Stream message:', msg);
+                      setMigrationMessages((prev) => [...prev, msg]);
+                    } catch (parseErr) {
+                      console.warn('[Rift] Failed to parse stream line:', line, parseErr);
+                    }
+                  }
+                }
+              }
+
+              // Process any remaining buffer
+              if (buffer.trim()) {
+                try {
+                  const msg = JSON.parse(buffer) as MigrationMessage;
+                  setMigrationMessages((prev) => [...prev, msg]);
+                } catch {
+                  console.warn('[Rift] Failed to parse final buffer:', buffer);
+                }
+              }
+            } catch (err) {
+              console.error('[Rift] Migration failed:', err);
+              setMigrationMessages((prev) => [
+                ...prev,
+                { type: 'error', message: err instanceof Error ? err.message : String(err) },
+              ]);
+            } finally {
+              setMigrationComplete(true);
+              setIsMigrating(false);
+            }
+          }}
+        />
+      )}
+
+      {/* Migration Progress Overlay is rendered at the bottom of the layout */}
+
+      {/* Preset save modal */}
+      <Dialog open={showPresetInput} onOpenChange={(open) => { if (!open) { setShowPresetInput(false); setConfirmingOverwrite(false); } }}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Save Preset</DialogTitle>
+          </DialogHeader>
+
+          {confirmingOverwrite && overwritePresetId ? (
+            // Overwrite confirmation
+            <div className="space-y-3">
+              <p className="text-sm text-foreground">
+                Are you sure you want to overwrite <strong>{existingPresets.find((p) => p.id === overwritePresetId)?.name}</strong>?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This will replace the saved paths and settings with your current selection.
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setConfirmingOverwrite(false); setOverwritePresetId(null); }}>
+                  Back
+                </Button>
+                <Button onClick={confirmSavePreset}>
+                  Overwrite
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            // Main save form
+            <div className="space-y-4">
+              {/* New preset name */}
+              <div>
+                <Label className="text-xs font-semibold text-foreground mb-1">
+                  Preset Name
+                </Label>
+                <Input
+                  type="text"
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && presetName.trim()) confirmSavePreset(); }}
+                  autoFocus
+                  placeholder="e.g. Full MCC Content"
+                />
+              </div>
+
+              {/* Existing presets */}
+              {existingPresets.length > 0 && (
+                <div>
+                  <Label className="text-xs font-semibold text-muted-foreground mb-1">
+                    Existing Presets
+                  </Label>
+                  <div className="border border-border rounded-md max-h-[160px] overflow-y-auto">
+                    {existingPresets.map((p) => (
+                      <div
+                        key={p.id}
+                        onClick={() => {
+                          setOverwritePresetId(p.id);
+                          setConfirmingOverwrite(true);
+                        }}
+                        className="px-3 py-2 text-sm cursor-pointer border-b border-border last:border-b-0 flex justify-between items-center text-foreground hover:bg-muted"
+                      >
+                        <span>{p.name}</span>
+                        <span className="text-xs text-muted-foreground">{p.paths.length} {p.paths.length === 1 ? 'path' : 'paths'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowPresetInput(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => { setOverwritePresetId(null); confirmSavePreset(); }}
+                  disabled={!presetName.trim()}
+                >
+                  Save as New
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Two-panel layout */}
+      <div className="flex flex-1 min-h-0 relative">
+        {/* Left panel — content tree */}
+        <div className="flex-1 border-r border-border p-4 overflow-y-auto">
+          {accessToken && selectedSiteRootPath && selectedEnvId ? (
+            <RiftContentTree
+              cmUrl={environments.find((e) => e.id === selectedEnvId)?.cmUrl ?? ''}
+              accessToken={accessToken}
+              rootPath={selectedSiteRootPath}
+              selectedPaths={selectedPaths}
+              onTogglePath={handleTogglePath}
+              inheritedPaths={inheritedPaths}
+              onChildrenLoaded={handleChildrenLoaded}
+            />
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Select a site to browse the content tree
+            </div>
+          )}
+        </div>
+
+        {/* Right panel — selected paths */}
+        <div className="w-[300px] p-4 bg-card overflow-y-auto">
+          <RiftSelectionPanel
+            selectedPaths={selectedPaths}
+            onRemovePath={handleRemovePath}
+            onChangeScope={handleChangeScope}
+            onClearAll={() => setSelectedPaths([])}
+          />
+        </div>
+
+        {/* Migration progress overlay */}
+        {(isMigrating || migrationComplete) && (
+          <RiftProgressOverlay
+            isActive={isMigrating}
+            messages={migrationMessages}
+            onClose={() => {
+              setMigrationComplete(false);
+              setMigrationMessages([]);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
