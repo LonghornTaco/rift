@@ -14,6 +14,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -94,6 +104,7 @@ export function RiftEnvironments() {
   const [envName, setEnvName] = useState('');
   const [envCmUrl, setEnvCmUrl] = useState('');
   const [allowWrite, setAllowWrite] = useState(true);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     getEnvironments().then(setEnvironments);
@@ -275,13 +286,15 @@ export function RiftEnvironments() {
     }
   }
 
-  async function handleDelete(id: string) {
-    await deleteEnvironment(id);
+  async function confirmDelete() {
+    if (!deleteConfirmId) return;
+    await deleteEnvironment(deleteConfirmId);
     setConnectionStatuses((prev) => {
       const next = { ...prev };
-      delete next[id];
+      delete next[deleteConfirmId];
       return next;
     });
+    setDeleteConfirmId(null);
     refreshEnvironments();
   }
 
@@ -588,7 +601,7 @@ export function RiftEnvironments() {
                   variant="outline"
                   size="xs"
                   colorScheme="danger"
-                  onClick={() => handleDelete(env.id)}
+                  onClick={() => setDeleteConfirmId(env.id)}
                 >
                   Delete
                 </Button>
@@ -609,6 +622,24 @@ export function RiftEnvironments() {
           {editingEnv ? renderEditModal() : renderAddModal()}
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Environment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this environment? This action cannot be undone and the stored credentials will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

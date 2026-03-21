@@ -49,6 +49,7 @@ export function Rift() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState('general');
   const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   useEffect(() => {
     getEnvironments().then((envs) => {
@@ -324,57 +325,73 @@ export function Rift() {
       </div>
 
       {/* Feedback dialog */}
-      <Dialog open={showFeedback} onOpenChange={(open) => { if (!open) setShowFeedback(false); }}>
+      <Dialog open={showFeedback} onOpenChange={(open) => { if (!open) { setShowFeedback(false); setFeedbackSent(false); setFeedbackText(''); setFeedbackCategory('general'); } }}>
         <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle>Send Feedback</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs font-semibold text-foreground mb-1">Category</Label>
-              <Select value={feedbackCategory} onValueChange={setFeedbackCategory}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">General Feedback</SelectItem>
-                  <SelectItem value="bug">Bug Report</SelectItem>
-                  <SelectItem value="feature">Feature Request</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-foreground mb-1">Your Feedback</Label>
-              <textarea
-                value={feedbackText}
-                onChange={(e) => setFeedbackText(e.target.value)}
-                placeholder="Tell us what you think..."
-                rows={5}
-                className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowFeedback(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={!feedbackText.trim()}
-              onClick={() => {
-                const categoryLabels: Record<string, string> = {
-                  general: 'General Feedback',
-                  bug: 'Bug Report',
-                  feature: 'Feature Request',
-                };
-                const subject = encodeURIComponent(`[Rift] ${categoryLabels[feedbackCategory] || 'Feedback'}`);
-                const body = encodeURIComponent(feedbackText.trim());
-                window.open(`mailto:rift-feedback@mayo.edu?subject=${subject}&body=${body}`, '_blank');
-                setShowFeedback(false);
-              }}
-            >
-              Send
-            </Button>
-          </DialogFooter>
+          {feedbackSent ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Thank You</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">Your feedback has been sent. We appreciate you taking the time to help us improve Rift.</p>
+              <DialogFooter>
+                <Button onClick={() => { setShowFeedback(false); setFeedbackSent(false); setFeedbackText(''); setFeedbackCategory('general'); }}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Send Feedback</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs font-semibold text-foreground mb-1">Category</Label>
+                  <Select value={feedbackCategory} onValueChange={setFeedbackCategory}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="general">General Feedback</SelectItem>
+                      <SelectItem value="bug">Bug Report</SelectItem>
+                      <SelectItem value="feature">Feature Request</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-foreground mb-1">Your Feedback</Label>
+                  <textarea
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder="Tell us what you think..."
+                    rows={5}
+                    className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowFeedback(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={!feedbackText.trim()}
+                  onClick={() => {
+                    const categoryLabels: Record<string, string> = {
+                      general: 'General Feedback',
+                      bug: 'Bug Report',
+                      feature: 'Feature Request',
+                    };
+                    const subject = encodeURIComponent(`[Rift] ${categoryLabels[feedbackCategory] || 'Feedback'}`);
+                    const body = encodeURIComponent(feedbackText.trim());
+                    window.open(`mailto:rift-feedback@mayo.edu?subject=${subject}&body=${body}`, '_blank');
+                    setFeedbackSent(true);
+                  }}
+                >
+                  Send
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </SidebarProvider>
