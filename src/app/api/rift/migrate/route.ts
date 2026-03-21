@@ -58,18 +58,18 @@ async function pullItemData(
   itemPath: string,
   scope: string
 ): Promise<Record<string, unknown>[]> {
-  const query = `
-    query($path: String!, $scope: SerializationScope!) {
-      serialize(path: $path, database: "master", scope: $scope) {
-        data
-      }
+  // Management API serialize uses enum values inline (not as variables)
+  const safePath = itemPath.replace(/"/g, '\\"');
+  const query = `{
+    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
+      data
     }
-  `;
+  }`;
 
   const res = await fetch(managementUrl(cmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query, variables: { path: itemPath, scope } }),
+    body: JSON.stringify({ query }),
   });
 
   if (!res.ok) throw new Error('Pull failed');
@@ -88,18 +88,18 @@ async function pullExistingIds(
   itemPath: string,
   scope: string
 ): Promise<Set<string>> {
-  const query = `
-    query($path: String!, $scope: SerializationScope!) {
-      serialize(path: $path, database: "master", scope: $scope) {
-        id
-      }
+  // Management API serialize uses enum values inline (not as variables)
+  const safePath = itemPath.replace(/"/g, '\\"');
+  const query = `{
+    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
+      id
     }
-  `;
+  }`;
 
   const res = await fetch(managementUrl(cmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query, variables: { path: itemPath, scope } }),
+    body: JSON.stringify({ query }),
   });
 
   if (!res.ok) return new Set();

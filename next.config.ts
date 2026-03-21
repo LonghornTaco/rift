@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
         {
           key: 'Content-Security-Policy',
           value: [
-            "default-src 'self'",
+            "default-src 'self' blob:",
             "script-src 'self' 'unsafe-inline'",
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data:",
