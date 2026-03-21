@@ -35,7 +35,7 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
 
   useEffect(() => {
     refreshPresets();
-    setEnvironments(getEnvironments());
+    getEnvironments().then(setEnvironments);
   }, []);
 
   const handleLoad = (preset: RiftPreset) => {

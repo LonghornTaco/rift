@@ -146,7 +146,7 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
   }, [selectedPaths, loadedTreeNodes]);
 
   useEffect(() => {
-    setEnvironments(getEnvironments());
+    getEnvironments().then(setEnvironments);
   }, []);
 
   const handleEnvChange = useCallback(
@@ -159,7 +159,8 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
 
       if (!envId) return;
 
-      const env = getEnvironments().find((e) => e.id === envId);
+      const envs = await getEnvironments();
+      const env = envs.find((e) => e.id === envId);
       if (!env) return;
 
       // Clear target if it matches the new source

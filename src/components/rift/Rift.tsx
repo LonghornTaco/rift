@@ -44,20 +44,24 @@ export function Rift() {
   const [loadedPreset, setLoadedPreset] = useState<RiftPreset | null>(null);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const [settings, setSettings] = useState<RiftSettings>(DEFAULT_SETTINGS);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState('general');
   const [feedbackText, setFeedbackText] = useState('');
 
   useEffect(() => {
-    if (getEnvironments().length === 0) {
-      setShowSetup(true);
-    }
-    // Restore dark mode preference
+    getEnvironments().then((envs) => {
+      if (envs.length === 0) {
+        setShowSetup(true);
+      }
+    });
+    // Restore dark mode preference (default: dark)
     const saved = localStorage.getItem('rift:darkMode');
-    if (saved === 'true') {
-      setDarkMode(true);
+    if (saved === 'false') {
+      setDarkMode(false);
+      document.documentElement.classList.remove('dark');
+    } else {
       document.documentElement.classList.add('dark');
     }
     setSettings(getSettings());

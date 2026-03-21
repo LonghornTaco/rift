@@ -177,7 +177,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
     }
   }
 
-  function handleStep1Next() {
+  async function handleStep1Next() {
     const env: RiftEnvironment = {
       id: crypto.randomUUID(),
       name: step1EnvName,
@@ -186,7 +186,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       clientSecret,
       allowWrite: step1AllowWrite,
     };
-    saveEnvironment(env);
+    await saveEnvironment(env);
 
     // Save credentials for step 2 pre-fill
     setSavedClientId(clientId);
@@ -295,7 +295,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
     }
   }
 
-  function handleStep2Finish() {
+  async function handleStep2Finish() {
     const env: RiftEnvironment = {
       id: crypto.randomUUID(),
       name: step2EnvName,
@@ -304,7 +304,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       clientSecret,
       allowWrite: step2AllowWrite,
     };
-    saveEnvironment(env);
+    await saveEnvironment(env);
     onComplete();
   }
 

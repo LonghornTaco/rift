@@ -96,11 +96,11 @@ export function RiftEnvironments() {
   const [allowWrite, setAllowWrite] = useState(true);
 
   useEffect(() => {
-    setEnvironments(getEnvironments());
+    getEnvironments().then(setEnvironments);
   }, []);
 
   function refreshEnvironments() {
-    setEnvironments(getEnvironments());
+    getEnvironments().then(setEnvironments);
   }
 
   function resetAddModalState() {
@@ -143,18 +143,18 @@ export function RiftEnvironments() {
     setEditingEnv(null);
   }
 
-  function handleSaveEdit() {
+  async function handleSaveEdit() {
     if (!editingEnv) return;
     const env: RiftEnvironment = {
       id: editingEnv.id,
       ...formData,
     };
-    saveEnvironment(env);
+    await saveEnvironment(env);
     refreshEnvironments();
     closeModal();
   }
 
-  function handleSaveNew() {
+  async function handleSaveNew() {
     const env: RiftEnvironment = {
       id: crypto.randomUUID(),
       name: envName,
@@ -163,7 +163,7 @@ export function RiftEnvironments() {
       clientSecret,
       allowWrite,
     };
-    saveEnvironment(env);
+    await saveEnvironment(env);
     refreshEnvironments();
     closeModal();
   }
@@ -275,8 +275,8 @@ export function RiftEnvironments() {
     }
   }
 
-  function handleDelete(id: string) {
-    deleteEnvironment(id);
+  async function handleDelete(id: string) {
+    await deleteEnvironment(id);
     setConnectionStatuses((prev) => {
       const next = { ...prev };
       delete next[id];

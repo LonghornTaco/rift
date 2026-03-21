@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Mock the crypto module to pass through values without actual encryption.
+// This lets us test storage logic without needing IndexedDB or Web Crypto in Node.
+vi.mock('@/lib/rift/crypto', () => ({
+  encrypt: async (plaintext: string) => ({ ct: plaintext, iv: 'mock-iv' }),
+  decrypt: async (encrypted: { ct: string }) => encrypted.ct,
+  isEncrypted: (value: unknown) =>
+    typeof value === 'object' && value !== null && 'ct' in value && 'iv' in value,
+}));
+
 import {
   getEnvironments,
   saveEnvironment,
@@ -34,29 +44,29 @@ describe('environment storage', () => {
     allowWrite: true,
   };
 
-  it('returns empty array when no environments saved', () => {
-    expect(getEnvironments()).toEqual([]);
+  it('returns empty array when no environments saved', async () => {
+    expect(await getEnvironments()).toEqual([]);
   });
 
-  it('saves and retrieves an environment', () => {
-    saveEnvironment(env);
-    const envs = getEnvironments();
+  it('saves and retrieves an environment', async () => {
+    await saveEnvironment(env);
+    const envs = await getEnvironments();
     expect(envs).toHaveLength(1);
     expect(envs[0]).toEqual(env);
   });
 
-  it('updates an existing environment by id', () => {
-    saveEnvironment(env);
-    saveEnvironment({ ...env, name: 'DEV-UPDATED' });
-    const envs = getEnvironments();
+  it('updates an existing environment by id', async () => {
+    await saveEnvironment(env);
+    await saveEnvironment({ ...env, name: 'DEV-UPDATED' });
+    const envs = await getEnvironments();
     expect(envs).toHaveLength(1);
     expect(envs[0].name).toBe('DEV-UPDATED');
   });
 
-  it('deletes an environment by id', () => {
-    saveEnvironment(env);
-    deleteEnvironment('test-id-1');
-    expect(getEnvironments()).toEqual([]);
+  it('deletes an environment by id', async () => {
+    await saveEnvironment(env);
+    await deleteEnvironment('test-id-1');
+    expect(await getEnvironments()).toEqual([]);
   });
 });
 
