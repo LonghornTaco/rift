@@ -261,9 +261,11 @@ async function processAndPushItems(
       for (const r of results) {
         if (r.success) {
           succeeded++;
-          // Stream debug-level messages for successful items
-          for (const m of r.messages ?? []) {
-            send({ type: 'debug', message: `${r.name}: ${m.message}`, logLevel: m.logLevel });
+          // Only stream per-item messages when user selected DEBUG
+          if (logLevel === 'DEBUG') {
+            for (const m of r.messages ?? []) {
+              send({ type: 'debug', message: `${r.name}: ${m.message}`, logLevel: m.logLevel });
+            }
           }
         } else {
           failed++;
