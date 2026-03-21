@@ -34,6 +34,7 @@ function formatElapsed(ms: number): string {
 export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgressOverlayProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [copyLabel, setCopyLabel] = useState('Copy Log');
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
@@ -126,15 +127,13 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              onClick={async () => {
                 const lines = messages.map((msg) => {
                   const { type, message, ...details } = msg;
                   const extra = Object.keys(details).length > 0 ? ` ${JSON.stringify(details)}` : '';
                   return `[${type}] ${(message as string) ?? ''}${extra}`;
                 });
 
-                // Add summary header
                 const complete = messages.find((m) => m.type === 'complete');
                 const header = [
                   `Rift Migration Log — ${new Date().toLocaleString()}`,
@@ -145,17 +144,23 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
                 ];
 
                 const content = [...header, ...lines].join('\n');
-                const blob = new Blob([content], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `rift-migration-${timestamp}.log`;
-                a.click();
-                URL.revokeObjectURL(url);
+
+                try {
+                  await navigator.clipboard.writeText(content);
+                  setCopyLabel('Copied!');
+                  setTimeout(() => setCopyLabel('Copy Log'), 2000);
+                } catch {
+                  // Fallback: open in new window if clipboard fails
+                  const w = window.open('', '_blank');
+                  if (w) {
+                    w.document.write(`<pre>${content.replace(/</g, '&lt;')}</pre>`);
+                    w.document.close();
+                  }
+                }
               }}
-              title="Download migration log"
+              title="Copy migration log to clipboard"
             >
-              Download Log
+              {copyLabel}
             </Button>
           )}
           {isFinished && (
