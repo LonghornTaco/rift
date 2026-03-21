@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <radialGradient id="bg" cx="30%" cy="30%" r="85%">
+      <stop offset="0%" stop-color="#0c1e26"/>
+      <stop offset="100%" stop-color="#030810"/>
+    </radialGradient>
+    <filter id="boxglow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <filter id="voidglow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <clipPath id="clip">
+      <rect x="5" y="5" width="150" height="150" rx="34"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect x="5" y="5" width="150" height="150" rx="34" fill="url(#bg)"/>
+
+  <!-- Stars -->
+  <g clip-path="url(#clip)">
+    <circle cx="105" cy="18" r="0.9" fill="white" opacity="0.4"/>
+    <circle cx="140" cy="42" r="0.7" fill="white" opacity="0.3"/>
+    <circle cx="16" cy="108" r="0.9" fill="white" opacity="0.35"/>
+    <circle cx="42" cy="142" r="0.7" fill="white" opacity="0.3"/>
+    <circle cx="140" cy="118" r="0.7" fill="white" opacity="0.25"/>
+  </g>
+
+  <!-- SOURCE box: centred on (48,48), 44x44 -->
+  <rect x="26" y="26" width="44" height="44" rx="10" fill="#061520" stroke="#22d3ee" stroke-width="1.8"/>
+  <rect x="26" y="26" width="44" height="44" rx="10" fill="#22d3ee" opacity="0.06" filter="url(#boxglow)"/>
+  <rect x="33" y="34" width="30" height="3" rx="1.5" fill="#67e8f9" opacity="0.85"/>
+  <rect x="33" y="39" width="21" height="3" rx="1.5" fill="#a5f3fc" opacity="0.65"/>
+  <rect x="33" y="44" width="26" height="3" rx="1.5" fill="#67e8f9" opacity="0.75"/>
+  <rect x="33" y="49" width="16" height="3" rx="1.5" fill="#a5f3fc" opacity="0.55"/>
+  <rect x="33" y="54" width="22" height="3" rx="1.5" fill="#67e8f9" opacity="0.42"/>
+
+  <!-- DEST box: centred on (112,112), 44x44 -->
+  <rect x="90" y="90" width="44" height="44" rx="10" fill="#150c00" stroke="#f59e0b" stroke-width="1.8"/>
+  <rect x="90" y="90" width="44" height="44" rx="10" fill="#f59e0b" opacity="0.06" filter="url(#boxglow)"/>
+  <rect x="97" y="98" width="30" height="3" rx="1.5" fill="#fcd34d" opacity="0.85"/>
+  <rect x="97" y="103" width="21" height="3" rx="1.5" fill="#fde68a" opacity="0.65"/>
+  <rect x="97" y="108" width="26" height="3" rx="1.5" fill="#fcd34d" opacity="0.75"/>
+  <rect x="97" y="113" width="16" height="3" rx="1.5" fill="#fde68a" opacity="0.55"/>
+  <rect x="97" y="118" width="22" height="3" rx="1.5" fill="#fcd34d" opacity="0.42"/>
+
+  <!-- Void glow in gap -->
+  <circle cx="80" cy="80" r="14" fill="#7c3aed" opacity="0.09" filter="url(#voidglow)"/>
+
+  <!-- 2 chevrons: points at (78,78) and (85,85) -->
+  <g transform="translate(78,78) rotate(45)">
+    <polyline points="-6,-5 0,0 -6,5" fill="none" stroke="#67e8f9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  </g>
+  <g transform="translate(85,85) rotate(45)">
+    <polyline points="-6,-5 0,0 -6,5" fill="none" stroke="#fcd34d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  </g>
+
+  <!-- Border -->
+  <rect x="5" y="5" width="150" height="150" rx="34" fill="none" stroke="#0e7490" stroke-width="1" opacity="0.4"/>
+</svg>

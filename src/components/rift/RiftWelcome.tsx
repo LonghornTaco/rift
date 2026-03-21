@@ -29,11 +29,14 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full flex-1 p-8">
-      {/* Icon */}
-      <div className="text-5xl mb-4">{'\u21C4'}</div>
+      {/* Logo */}
+      <img src="/rift-logo.svg" alt="Rift" className="w-16 h-16 mb-4" />
 
       {/* Heading */}
-      <div className="text-[22px] font-bold text-foreground mb-2">
+      <div className="text-[26px] font-bold text-foreground mb-1">
+        Welcome to Rift!
+      </div>
+      <div className="text-[16px] font-medium text-muted-foreground mb-2">
         Start a Migration
       </div>
 
