@@ -38,12 +38,16 @@ export interface SiteInfo {
   rootPath: string;
 }
 
+export type MigrationLogLevel = 'DEBUG' | 'INFORMATION' | 'WARNING' | 'ERROR';
+
 export interface RiftSettings {
   batchSize: number;
+  logLevel: MigrationLogLevel;
 }
 
 export const DEFAULT_SETTINGS: RiftSettings = {
   batchSize: 200,
+  logLevel: 'INFORMATION',
 };
 
 export interface MigrationHistoryEntry {

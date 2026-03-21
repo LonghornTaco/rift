@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RiftPreset, RiftEnvironment, MigrationPath, MigrationHistoryEntry, TreeNode, SiteInfo } from '@/lib/rift/types';
-import { getEnvironments, getPresets, savePreset, addHistoryEntry } from '@/lib/rift/storage';
+import { RiftPreset, RiftEnvironment, MigrationPath, MigrationHistoryEntry, MigrationLogLevel, TreeNode, SiteInfo, DEFAULT_SETTINGS } from '@/lib/rift/types';
+import { getEnvironments, getPresets, savePreset, addHistoryEntry, getSettings, saveSettings } from '@/lib/rift/storage';
 import { authenticate } from '@/lib/rift/sitecore-auth';
 import { fetchSites } from '@/lib/rift/api-client';
 import { RiftContentTree } from './RiftContentTree';
@@ -27,14 +27,27 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
 
 interface RiftMigrateProps {
   loadedPreset: RiftPreset | null;
   onBack: () => void;
-  batchSize?: number;
 }
 
-export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigrateProps) {
+export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
+  const [batchSize, setBatchSize] = useState(DEFAULT_SETTINGS.batchSize);
+  const [logLevel, setLogLevel] = useState<MigrationLogLevel>(DEFAULT_SETTINGS.logLevel);
+
+  // Load persisted settings
+  useEffect(() => {
+    const s = getSettings();
+    setBatchSize(s.batchSize);
+    setLogLevel(s.logLevel);
+  }, []);
   const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
   const [selectedSiteRootPath, setSelectedSiteRootPath] = useState<string | null>(null);
@@ -338,18 +351,76 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
           {'\u2605'} Save Preset
         </Button>
 
-        {/* Start Migration */}
-        <Button
-          size="sm"
-          disabled={!canStartMigration}
-          onClick={() => {
-            if (canStartMigration) {
-              setShowConfirmDialog(true);
-            }
-          }}
-        >
-          {'\u26A1'} Start Migration
-        </Button>
+        {/* Start Migration + Settings */}
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            disabled={!canStartMigration}
+            onClick={() => {
+              if (canStartMigration) {
+                setShowConfirmDialog(true);
+              }
+            }}
+          >
+            {'\u26A1'} Start Migration
+          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="px-2" title="Migration settings">
+                {'\u2699'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64" align="end">
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-foreground">Migration Settings</div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1">Batch Size</Label>
+                  <Select
+                    value={String(batchSize)}
+                    onValueChange={(val) => {
+                      const size = Number(val);
+                      setBatchSize(size);
+                      saveSettings({ ...getSettings(), batchSize: size });
+                    }}
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[25, 50, 100, 200, 500].map((n) => (
+                        <SelectItem key={n} value={String(n)}>{n} items</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1">Log Level</Label>
+                  <Select
+                    value={logLevel}
+                    onValueChange={(val) => {
+                      const level = val as MigrationLogLevel;
+                      setLogLevel(level);
+                      saveSettings({ ...getSettings(), logLevel: level });
+                    }}
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ERROR">Error</SelectItem>
+                      <SelectItem value="WARNING">Warning</SelectItem>
+                      <SelectItem value="INFORMATION">Information</SelectItem>
+                      <SelectItem value="DEBUG">Debug</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Controls detail level in migration log
+                  </p>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Confirmation Dialog */}
@@ -398,6 +469,7 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
                     scope: p.scope,
                   })),
                   batchSize,
+                  logLevel,
                 }),
               });
 

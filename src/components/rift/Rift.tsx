@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RiftView, RiftPreset, RiftSettings, DEFAULT_SETTINGS } from '@/lib/rift/types';
-import { getEnvironments, getSettings, saveSettings } from '@/lib/rift/storage';
+import { RiftView, RiftPreset } from '@/lib/rift/types';
+import { getEnvironments } from '@/lib/rift/storage';
 import { RiftEnvironments } from './RiftEnvironments';
 import { RiftWelcome } from './RiftWelcome';
 import { RiftMigrate } from './RiftMigrate';
@@ -46,7 +46,6 @@ export function Rift() {
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
-  const [settings, setSettings] = useState<RiftSettings>(DEFAULT_SETTINGS);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState('general');
   const [feedbackText, setFeedbackText] = useState('');
@@ -66,7 +65,6 @@ export function Rift() {
     } else {
       document.documentElement.classList.add('dark');
     }
-    setSettings(getSettings());
   }, []);
 
   const toggleDarkMode = () => {
@@ -119,7 +117,7 @@ export function Rift() {
           />
         );
       }
-      return <RiftMigrate loadedPreset={loadedPreset} onBack={() => setMigrateMode('welcome')} batchSize={settings.batchSize} />;
+      return <RiftMigrate loadedPreset={loadedPreset} onBack={() => setMigrateMode('welcome')} />;
     }
 
     if (activeView === 'presets') {
@@ -174,35 +172,6 @@ export function Rift() {
             </Select>
           </div>
 
-          {/* Configuration section */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Configuration</h3>
-            <label className="text-sm font-medium text-muted-foreground block mb-1">
-              Batch Size
-            </label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Number of items pushed per request. Larger batches are faster but may timeout on slow connections. Default: {DEFAULT_SETTINGS.batchSize}.
-            </p>
-            <Select
-              value={String(settings.batchSize)}
-              onValueChange={(val) => {
-                const updated = { ...settings, batchSize: parseInt(val, 10) };
-                setSettings(updated);
-                saveSettings(updated);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="25">25 (conservative)</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-                <SelectItem value="200">200 (default)</SelectItem>
-                <SelectItem value="500">500 (aggressive)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
         </div>
       </div>
     );
@@ -300,7 +269,7 @@ export function Rift() {
                       className="pl-6"
                     >
                       <span className="w-5 text-center inline-block shrink-0">{'\u2699'}</span>
-                      <span>Configuration</span>
+                      <span>Theme</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>

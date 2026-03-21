@@ -18,7 +18,10 @@ interface MigrateRequestBody {
     scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants';
   }>;
   batchSize?: number;
+  logLevel?: string;
 }
+
+const VALID_LOG_LEVELS = new Set(['DEBUG', 'INFORMATION', 'WARNING', 'ERROR']);
 
 const VALID_SCOPES: Record<string, string> = {
   SingleItem: 'SINGLE_ITEM',
@@ -185,7 +188,8 @@ function buildCommand(
 async function executeCommands(
   cmUrl: string,
   token: string,
-  commands: Array<{ itemID: string; parentID: string; database: string; command: string; data: string }>
+  commands: Array<{ itemID: string; parentID: string; database: string; command: string; data: string }>,
+  logLevel: string
 ): Promise<Array<{ name: string; success: boolean; messages: Array<{ logLevel: string; message: string }> }>> {
   const mutation = `
     mutation($commands: [ItemCommand!]!, $logLevel: SerializationResultLogLevel) {
@@ -203,7 +207,7 @@ async function executeCommands(
   const res = await fetch(managementUrl(cmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query: mutation, variables: { commands, logLevel: 'DEBUG' } }),
+    body: JSON.stringify({ query: mutation, variables: { commands, logLevel } }),
   });
 
   if (!res.ok) {
@@ -227,7 +231,8 @@ async function processAndPushItems(
   targetToken: string,
   send: (data: Record<string, unknown>) => void,
   label: string,
-  batchSize: number
+  batchSize: number,
+  logLevel: string
 ): Promise<{ succeeded: number; failed: number; created: number; updated: number }> {
   let succeeded = 0;
   let failed = 0;
@@ -249,7 +254,8 @@ async function processAndPushItems(
       const results = await executeCommands(
         targetCmUrl,
         targetToken,
-        commands.map(({ isCreate, ...cmd }) => cmd)
+        commands.map(({ isCreate, ...cmd }) => cmd),
+        logLevel
       );
 
       for (const r of results) {
@@ -296,7 +302,7 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
 
-  const { source, target, paths, batchSize: requestBatchSize } = body;
+  const { source, target, paths, batchSize: requestBatchSize, logLevel: requestLogLevel } = body;
 
   // Validate required fields
   if (!source?.cmUrl || !source?.clientId || !target?.cmUrl || !target?.clientId || !paths?.length) {
@@ -326,6 +332,7 @@ export async function POST(request: NextRequest) {
 
   // Clamp batchSize to safe range
   const batchSize = Math.min(Math.max(Number(requestBatchSize) || DEFAULT_BATCH_SIZE, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
+  const logLevel = VALID_LOG_LEVELS.has(requestLogLevel ?? '') ? requestLogLevel! : 'INFORMATION';
 
   // Sort paths: media library first, then content
   const sortedPaths = [...paths].sort((a, b) => {
@@ -390,7 +397,7 @@ export async function POST(request: NextRequest) {
             existingIds = new Set();
           }
 
-          const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize);
+          const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize, logLevel);
 
           totalSucceeded += result.succeeded;
           totalFailed += result.failed;
