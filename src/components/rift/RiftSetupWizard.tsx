@@ -463,12 +463,12 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
 
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={allowWrite}
-                onCheckedChange={(checked) => onAllowWriteChange(checked === true)}
+                checked={!allowWrite}
+                onCheckedChange={(checked) => onAllowWriteChange(checked !== true)}
                 id={checkboxId}
               />
               <Label htmlFor={checkboxId} className="text-sm text-foreground">
-                Allow Write
+                Read Only
               </Label>
             </div>
           </>

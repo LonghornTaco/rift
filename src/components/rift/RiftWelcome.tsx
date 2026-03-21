@@ -33,17 +33,8 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
       <img src="/rift-logo.svg" alt="Rift" className="w-16 h-16 mb-4" />
 
       {/* Heading */}
-      <div className="text-[26px] font-bold text-foreground mb-1">
+      <div className="text-[26px] font-bold text-foreground mb-6">
         Welcome to Rift!
-      </div>
-      <div className="text-[16px] font-medium text-muted-foreground mb-2">
-        Start a Migration
-      </div>
-
-      {/* Subtitle */}
-      <div className="text-[13px] text-muted-foreground max-w-[480px] leading-relaxed text-center mb-6">
-        Select an environment and site to browse content, or load a saved preset to pick up where
-        you left off.
       </div>
 
       {/* Buttons */}

@@ -347,14 +347,14 @@ export function RiftEnvironments() {
 
         <div className="flex items-center gap-2">
           <Checkbox
-            checked={formData.allowWrite}
+            checked={!formData.allowWrite}
             onCheckedChange={(checked) =>
-              setFormData((f) => ({ ...f, allowWrite: checked === true }))
+              setFormData((f) => ({ ...f, allowWrite: checked !== true }))
             }
-            id="allowWriteEdit"
+            id="readOnlyEdit"
           />
-          <Label htmlFor="allowWriteEdit" className="text-sm text-foreground">
-            Allow Write
+          <Label htmlFor="readOnlyEdit" className="text-sm text-foreground">
+            Read Only
           </Label>
         </div>
 
@@ -482,12 +482,12 @@ export function RiftEnvironments() {
 
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={allowWrite}
-                onCheckedChange={(checked) => setAllowWrite(checked === true)}
-                id="allowWriteNew"
+                checked={!allowWrite}
+                onCheckedChange={(checked) => setAllowWrite(checked !== true)}
+                id="readOnlyNew"
               />
-              <Label htmlFor="allowWriteNew" className="text-sm text-foreground">
-                Allow Write
+              <Label htmlFor="readOnlyNew" className="text-sm text-foreground">
+                Read Only
               </Label>
             </div>
           </>
