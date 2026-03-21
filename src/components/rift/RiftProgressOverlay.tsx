@@ -34,6 +34,7 @@ function formatElapsed(ms: number): string {
 export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgressOverlayProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [showVerbose, setShowVerbose] = useState(false);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
@@ -89,6 +90,12 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
 
   const displayElapsed = finalElapsed ?? elapsed;
 
+  const filteredMessages = showVerbose
+    ? messages
+    : messages.filter((m) => m.type !== 'debug');
+
+  const debugCount = messages.filter((m) => m.type === 'debug').length;
+
   const getMessageColor = (type: string) => {
     switch (type) {
       case 'error': return 'text-destructive';
@@ -96,6 +103,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
       case 'pull-complete': return 'text-blue-600 dark:text-blue-400';
       case 'push-batch': return 'text-green-600 dark:text-green-400';
       case 'complete': return 'text-green-600 dark:text-green-400 font-semibold';
+      case 'debug': return 'text-muted-foreground/60 italic';
       default: return 'text-muted-foreground';
     }
   };
@@ -206,16 +214,27 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
       </div>
 
       {/* Collapsible details log */}
-      <div className="shrink-0">
+      <div className="shrink-0 flex items-center justify-between">
         <button
           onClick={() => setDetailsOpen((prev) => !prev)}
-          className="w-full px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground text-left flex items-center gap-1 cursor-pointer"
+          className="px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground text-left flex items-center gap-1 cursor-pointer"
         >
           <span className="inline-block transition-transform" style={{ transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
             {'\u25B6'}
           </span>
-          Details ({messages.length} messages)
+          Details ({filteredMessages.length} messages)
         </button>
+        {debugCount > 0 && (
+          <label className="flex items-center gap-1.5 px-4 py-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showVerbose}
+              onChange={(e) => setShowVerbose(e.target.checked)}
+              className="rounded"
+            />
+            Verbose ({debugCount})
+          </label>
+        )}
       </div>
 
       {detailsOpen && (
@@ -223,7 +242,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
           ref={logRef}
           className="flex-1 min-h-0 overflow-y-auto px-4 py-2 font-mono text-xs space-y-0.5"
         >
-          {messages.map((msg, i) => (
+          {filteredMessages.map((msg, i) => (
             <div key={i} className={getMessageColor(msg.type)}>
               <span className="text-muted-foreground mr-2">[{msg.type}]</span>
               {(msg.message as string) ?? JSON.stringify(msg)}
