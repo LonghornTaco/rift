@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { RiftPreset, RiftEnvironment, MigrationPath, TreeNode, SiteInfo } from '@/lib/rift/types';
-import { getEnvironments, getPresets, savePreset } from '@/lib/rift/storage';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { RiftPreset, RiftEnvironment, MigrationPath, MigrationHistoryEntry, TreeNode, SiteInfo } from '@/lib/rift/types';
+import { getEnvironments, getPresets, savePreset, addHistoryEntry } from '@/lib/rift/storage';
 import { authenticate } from '@/lib/rift/sitecore-auth';
 import { fetchSites } from '@/lib/rift/api-client';
 import { RiftContentTree } from './RiftContentTree';
@@ -53,6 +53,7 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
+  const migrationStartRef = useRef<number>(0);
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [overwritePresetId, setOverwritePresetId] = useState<string | null>(null);
@@ -363,6 +364,13 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
             setIsMigrating(true);
             setMigrationMessages([]);
             setMigrationComplete(false);
+            migrationStartRef.current = Date.now();
+
+            const localMessages: MigrationMessage[] = [];
+            const addMsg = (msg: MigrationMessage) => {
+              localMessages.push(msg);
+              setMigrationMessages((prev) => [...prev, msg]);
+            };
 
             try {
               const sourceEnv = environments.find((e) => e.id === selectedEnvId);
@@ -395,10 +403,7 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
 
               if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                setMigrationMessages((prev) => [
-                  ...prev,
-                  { type: 'error', message: errData.error || `Request failed: ${response.status}` },
-                ]);
+                addMsg({ type: 'error', message: errData.error || `Request failed: ${response.status}` });
                 setMigrationComplete(true);
                 setIsMigrating(false);
                 return;
@@ -420,7 +425,7 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
                     try {
                       const msg = JSON.parse(line) as MigrationMessage;
                       console.log('[Rift] Stream message:', msg);
-                      setMigrationMessages((prev) => [...prev, msg]);
+                      addMsg(msg);
                     } catch (parseErr) {
                       console.warn('[Rift] Failed to parse stream line:', line, parseErr);
                     }
@@ -432,20 +437,40 @@ export function RiftMigrate({ loadedPreset, onBack, batchSize = 200 }: RiftMigra
               if (buffer.trim()) {
                 try {
                   const msg = JSON.parse(buffer) as MigrationMessage;
-                  setMigrationMessages((prev) => [...prev, msg]);
+                  addMsg(msg);
                 } catch {
                   console.warn('[Rift] Failed to parse final buffer:', buffer);
                 }
               }
             } catch (err) {
               console.error('[Rift] Migration failed:', err);
-              setMigrationMessages((prev) => [
-                ...prev,
-                { type: 'error', message: err instanceof Error ? err.message : String(err) },
-              ]);
+              addMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
             } finally {
               setMigrationComplete(true);
               setIsMigrating(false);
+
+              // Save migration history
+              const elapsedMs = Date.now() - migrationStartRef.current;
+              const completeMsg = localMessages.find((m) => m.type === 'complete');
+              const hasErrors = localMessages.some((m) => m.type === 'error');
+              const sourceEnv = environments.find((e) => e.id === selectedEnvId);
+              const targetEnv = environments.find((e) => e.id === selectedTargetEnvId);
+
+              const entry: MigrationHistoryEntry = {
+                id: crypto.randomUUID(),
+                date: new Date().toISOString(),
+                sourceEnvName: sourceEnv?.name ?? 'Unknown',
+                targetEnvName: targetEnv?.name ?? 'Unknown',
+                paths: selectedPaths.map((p) => ({ itemPath: p.itemPath, scope: p.scope })),
+                elapsedMs,
+                totalItems: (completeMsg?.totalItems as number) ?? 0,
+                succeeded: (completeMsg?.succeeded as number) ?? 0,
+                failed: (completeMsg?.failed as number) ?? 0,
+                created: (completeMsg?.created as number) ?? 0,
+                updated: (completeMsg?.updated as number) ?? 0,
+                status: completeMsg && !hasErrors ? 'success' : completeMsg && hasErrors ? 'partial' : 'failed',
+              };
+              addHistoryEntry(entry);
             }
           }}
         />

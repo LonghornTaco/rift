@@ -72,9 +72,15 @@ async function pullItemData(
     body: JSON.stringify({ query }),
   });
 
-  if (!res.ok) throw new Error('Pull failed');
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Pull failed (HTTP ${res.status}): ${text.substring(0, 200)}`);
+  }
   const json = await res.json();
-  if (json.errors && !json.data) throw new Error('Pull returned errors');
+  if (json.errors && !json.data) {
+    const errMsg = json.errors.map((e: { message?: string }) => e.message).join('; ');
+    throw new Error(`GraphQL errors: ${errMsg.substring(0, 300)}`);
+  }
 
   return (json?.data?.serialize ?? []).map((item: Record<string, unknown>) =>
     (item.data || item) as Record<string, unknown>
@@ -200,9 +206,15 @@ async function executeCommands(
     body: JSON.stringify({ query: mutation, variables: { commands, logLevel: 'DEBUG' } }),
   });
 
-  if (!res.ok) throw new Error('Execute failed');
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Execute failed (HTTP ${res.status}): ${text.substring(0, 200)}`);
+  }
   const json = await res.json();
-  if (json.errors && !json.data) throw new Error('Execute returned errors');
+  if (json.errors && !json.data) {
+    const errMsg = json.errors.map((e: { message?: string }) => e.message).join('; ');
+    throw new Error(`Execute errors: ${errMsg.substring(0, 300)}`);
+  }
 
   return json?.data?.executeSerializationCommands ?? [];
 }
@@ -254,8 +266,9 @@ async function processAndPushItems(
       updated += batchUpdates;
     } catch (err) {
       failed += batch.length;
-      console.error(`[Rift migrate] Batch ${batchNum} failed:`, err instanceof Error ? err.message : String(err));
-      send({ type: 'error', message: `${label} batch ${batchNum} failed` });
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[Rift migrate] Batch ${batchNum} failed:`, detail);
+      send({ type: 'error', message: `${label} batch ${batchNum} failed: ${detail}` });
     }
 
     send({
@@ -357,8 +370,9 @@ export async function POST(request: NextRequest) {
             send({ type: 'pull-complete', path: p.itemPath, itemCount: items.length });
             totalPulled += items.length;
           } catch (err) {
-            console.error(`[Rift migrate] Pull failed for ${p.itemPath}:`, err instanceof Error ? err.message : String(err));
-            send({ type: 'error', message: `Failed to pull ${p.itemPath}` });
+            const detail = err instanceof Error ? err.message : String(err);
+            console.error(`[Rift migrate] Pull failed for ${p.itemPath}:`, detail);
+            send({ type: 'error', message: `Failed to pull ${p.itemPath}: ${detail}` });
             continue;
           }
 

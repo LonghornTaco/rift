@@ -1,10 +1,12 @@
-import type { RiftEnvironment, RiftPreset, RiftSettings } from './types';
+import type { RiftEnvironment, RiftPreset, RiftSettings, MigrationHistoryEntry } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { encrypt, decrypt, type EncryptedValue } from './crypto';
 
 const ENVS_KEY = 'rift:environments';
 const PRESETS_KEY = 'rift:presets';
 const SETTINGS_KEY = 'rift:settings';
+const HISTORY_KEY = 'rift:history';
+const MAX_HISTORY = 50;
 
 function readJson<T>(key: string): T[] {
   try {
@@ -122,4 +124,20 @@ export function updatePresetLastUsed(id: string): void {
     preset.lastUsed = new Date().toISOString();
     writeJson(PRESETS_KEY, presets);
   }
+}
+
+// --- Migration History (sync, no sensitive data) ---
+
+export function getHistory(): MigrationHistoryEntry[] {
+  return readJson<MigrationHistoryEntry>(HISTORY_KEY);
+}
+
+export function addHistoryEntry(entry: MigrationHistoryEntry): void {
+  const history = getHistory();
+  history.unshift(entry); // newest first
+  writeJson(HISTORY_KEY, history.slice(0, MAX_HISTORY));
+}
+
+export function clearHistory(): void {
+  localStorage.removeItem(HISTORY_KEY);
 }

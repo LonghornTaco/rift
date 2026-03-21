@@ -17,9 +17,48 @@ interface RiftProgressOverlayProps {
   onClose: () => void;
 }
 
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
 export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgressOverlayProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const startTimeRef = useRef<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
+
+  // Start/stop the timer based on isActive
+  useEffect(() => {
+    if (isActive && !startTimeRef.current) {
+      startTimeRef.current = Date.now();
+      setFinalElapsed(null);
+      setElapsed(0);
+    }
+
+    if (isActive) {
+      const interval = setInterval(() => {
+        if (startTimeRef.current) {
+          setElapsed(Date.now() - startTimeRef.current);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (startTimeRef.current) {
+      // Migration just finished — capture final time
+      setFinalElapsed(Date.now() - startTimeRef.current);
+      startTimeRef.current = null;
+    }
+  }, [isActive]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -47,6 +86,8 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
 
   const pullCompleteMessages = messages.filter((m) => m.type === 'pull-complete');
   const totalPulled = pullCompleteMessages.reduce((sum, m) => sum + ((m.itemCount as number) || 0), 0);
+
+  const displayElapsed = finalElapsed ?? elapsed;
 
   const getMessageColor = (type: string) => {
     switch (type) {
@@ -96,6 +137,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
                 const complete = messages.find((m) => m.type === 'complete');
                 const header = [
                   `Rift Migration Log — ${new Date().toLocaleString()}`,
+                  `Elapsed: ${formatElapsed(displayElapsed)}`,
                   complete ? `Result: ${complete.message}` : 'Result: In progress / incomplete',
                   `Total messages: ${messages.length}`,
                   '---',
@@ -138,13 +180,18 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
           <span className="text-sm font-medium text-foreground">
             {isActive ? 'Migration in progress' : 'Migration finished'}
           </span>
-          {totalPulled > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {totalPulled} items pulled
-              {pushedItems != null && ` / ${pushedItems} pushed`}
-              {totalItems != null && ` of ${totalItems}`}
+          <div className="flex items-center gap-3">
+            {totalPulled > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {totalPulled} items pulled
+                {pushedItems != null && ` / ${pushedItems} pushed`}
+                {totalItems != null && ` of ${totalItems}`}
+              </span>
+            )}
+            <span className="text-xs font-mono text-muted-foreground tabular-nums">
+              {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
             </span>
-          )}
+          </div>
         </div>
 
         {isActive && (

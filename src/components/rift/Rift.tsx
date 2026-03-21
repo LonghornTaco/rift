@@ -7,6 +7,7 @@ import { RiftEnvironments } from './RiftEnvironments';
 import { RiftWelcome } from './RiftWelcome';
 import { RiftMigrate } from './RiftMigrate';
 import { RiftPresets } from './RiftPresets';
+import { RiftHistory } from './RiftHistory';
 import { RiftSetupWizard } from './RiftSetupWizard';
 import {
   SidebarProvider,
@@ -131,6 +132,10 @@ export function Rift() {
           }}
         />
       );
+    }
+
+    if (activeView === 'history') {
+      return <RiftHistory />;
     }
 
     // Settings page
@@ -274,6 +279,17 @@ export function Rift() {
                     >
                       <span className="w-5 text-center inline-block shrink-0">{'\u2605'}</span>
                       <span>Presets</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      size="sm"
+                      isActive={activeView === 'history'}
+                      onClick={() => handleNavClick('history')}
+                      className="pl-6"
+                    >
+                      <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCCB'}</span>
+                      <span>History</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>

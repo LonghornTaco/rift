@@ -46,6 +46,21 @@ export const DEFAULT_SETTINGS: RiftSettings = {
   batchSize: 200,
 };
 
-export type RiftView = 'environments' | 'migrate' | 'presets' | 'display';
+export interface MigrationHistoryEntry {
+  id: string;
+  date: string;
+  sourceEnvName: string;
+  targetEnvName: string;
+  paths: { itemPath: string; scope: string }[];
+  elapsedMs: number;
+  totalItems: number;
+  succeeded: number;
+  failed: number;
+  created: number;
+  updated: number;
+  status: 'success' | 'partial' | 'failed';
+}
+
+export type RiftView = 'environments' | 'migrate' | 'presets' | 'history' | 'display';
 
 export type ConnectionStatus = 'untested' | 'connected' | 'failed';
