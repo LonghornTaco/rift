@@ -1,1 +1,9 @@
-node_modules/\n.next/\n.superpowers/
+node_modules/
+.next/
+.superpowers/
+.claude/
+.env
+.env.*
+.env.local
+.env.production
+sbom.json

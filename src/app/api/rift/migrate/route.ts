@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { validateCmUrl, validateItemPath, getClientIp } from '@/lib/rift/api-security';
+import { logOperation, logError } from '@/lib/rift/logger';
 
 interface MigrateRequestBody {
   source: {
@@ -18,7 +20,7 @@ interface MigrateRequestBody {
   batchSize?: number;
 }
 
-const SCOPE_MAP: Record<string, string> = {
+const VALID_SCOPES: Record<string, string> = {
   SingleItem: 'SINGLE_ITEM',
   ItemAndChildren: 'ITEM_AND_CHILDREN',
   ItemAndDescendants: 'ITEM_AND_DESCENDANTS',
@@ -26,6 +28,8 @@ const SCOPE_MAP: Record<string, string> = {
 
 const MANAGEMENT_PATH = '/sitecore/api/management';
 const DEFAULT_BATCH_SIZE = 200;
+const MAX_BATCH_SIZE = 500;
+const MIN_BATCH_SIZE = 1;
 
 async function getAccessToken(clientId: string, clientSecret: string): Promise<string> {
   const res = await fetch('https://auth.sitecorecloud.io/oauth/token', {
@@ -38,7 +42,7 @@ async function getAccessToken(clientId: string, clientSecret: string): Promise<s
       audience: 'https://api.sitecorecloud.io',
     }),
   });
-  if (!res.ok) throw new Error(`Auth failed: ${res.status}`);
+  if (!res.ok) throw new Error('Authentication failed');
   const data = await res.json();
   return data.access_token;
 }
@@ -47,29 +51,30 @@ function managementUrl(cmUrl: string): string {
   return `${cmUrl.replace(/\/$/, '')}${MANAGEMENT_PATH}`;
 }
 
-// Pull full item data for a single path
+// Pull full item data for a single path using GraphQL variables
 async function pullItemData(
   cmUrl: string,
   token: string,
   itemPath: string,
   scope: string
 ): Promise<Record<string, unknown>[]> {
-  const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `{
-    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
-      data
+  const query = `
+    query($path: String!, $scope: SerializationScope!) {
+      serialize(path: $path, database: "master", scope: $scope) {
+        data
+      }
     }
-  }`;
+  `;
 
   const res = await fetch(managementUrl(cmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, variables: { path: itemPath, scope } }),
   });
 
-  if (!res.ok) throw new Error(`Pull failed: ${res.status}`);
+  if (!res.ok) throw new Error('Pull failed');
   const json = await res.json();
-  if (json.errors && !json.data) throw new Error(`Pull errors: ${JSON.stringify(json.errors)}`);
+  if (json.errors && !json.data) throw new Error('Pull returned errors');
 
   return (json?.data?.serialize ?? []).map((item: Record<string, unknown>) =>
     (item.data || item) as Record<string, unknown>
@@ -83,17 +88,18 @@ async function pullExistingIds(
   itemPath: string,
   scope: string
 ): Promise<Set<string>> {
-  const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `{
-    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
-      id
+  const query = `
+    query($path: String!, $scope: SerializationScope!) {
+      serialize(path: $path, database: "master", scope: $scope) {
+        id
+      }
     }
-  }`;
+  `;
 
   const res = await fetch(managementUrl(cmUrl), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, variables: { path: itemPath, scope } }),
   });
 
   if (!res.ok) return new Set();
@@ -194,14 +200,14 @@ async function executeCommands(
     body: JSON.stringify({ query: mutation, variables: { commands, logLevel: 'DEBUG' } }),
   });
 
-  if (!res.ok) throw new Error(`Execute failed: ${res.status}`);
+  if (!res.ok) throw new Error('Execute failed');
   const json = await res.json();
-  if (json.errors && !json.data) throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+  if (json.errors && !json.data) throw new Error('Execute returned errors');
 
   return json?.data?.executeSerializationCommands ?? [];
 }
 
-// Process and push items in batches, releasing memory after each batch
+// Process and push items in batches
 async function processAndPushItems(
   items: Record<string, unknown>[],
   existingIds: Set<string>,
@@ -223,7 +229,6 @@ async function processAndPushItems(
 
     send({ type: 'status', message: `${label}: pushing batch ${batchNum}/${totalBatches} (${batch.length} items)...` });
 
-    // Build commands for this batch only
     const commands = batch.map((item) => buildCommand(item, existingIds));
     const batchCreates = commands.filter((c) => c.isCreate).length;
     const batchUpdates = commands.length - batchCreates;
@@ -249,7 +254,8 @@ async function processAndPushItems(
       updated += batchUpdates;
     } catch (err) {
       failed += batch.length;
-      send({ type: 'error', message: `${label} batch ${batchNum} failed: ${err instanceof Error ? err.message : String(err)}` });
+      console.error(`[Rift migrate] Batch ${batchNum} failed:`, err instanceof Error ? err.message : String(err));
+      send({ type: 'error', message: `${label} batch ${batchNum} failed` });
     }
 
     send({
@@ -264,6 +270,8 @@ async function processAndPushItems(
 }
 
 export async function POST(request: NextRequest) {
+  const clientIp = getClientIp(request);
+
   let body: MigrateRequestBody;
   try {
     body = await request.json();
@@ -272,10 +280,35 @@ export async function POST(request: NextRequest) {
   }
 
   const { source, target, paths, batchSize: requestBatchSize } = body;
-  const batchSize = requestBatchSize ?? DEFAULT_BATCH_SIZE;
+
+  // Validate required fields
   if (!source?.cmUrl || !source?.clientId || !target?.cmUrl || !target?.clientId || !paths?.length) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
   }
+
+  // Validate cmUrls (SSRF prevention)
+  const sourceCmError = validateCmUrl(source.cmUrl);
+  if (sourceCmError) {
+    return new Response(JSON.stringify({ error: `Source: ${sourceCmError}` }), { status: 400 });
+  }
+  const targetCmError = validateCmUrl(target.cmUrl);
+  if (targetCmError) {
+    return new Response(JSON.stringify({ error: `Target: ${targetCmError}` }), { status: 400 });
+  }
+
+  // Validate all paths and scopes
+  for (const p of paths) {
+    const pathError = validateItemPath(p.itemPath);
+    if (pathError) {
+      return new Response(JSON.stringify({ error: `Invalid path: ${p.itemPath}` }), { status: 400 });
+    }
+    if (!VALID_SCOPES[p.scope]) {
+      return new Response(JSON.stringify({ error: `Invalid scope: ${p.scope}` }), { status: 400 });
+    }
+  }
+
+  // Clamp batchSize to safe range
+  const batchSize = Math.min(Math.max(Number(requestBatchSize) || DEFAULT_BATCH_SIZE, MIN_BATCH_SIZE), MAX_BATCH_SIZE);
 
   // Sort paths: media library first, then content
   const sortedPaths = [...paths].sort((a, b) => {
@@ -294,6 +327,8 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        logOperation('/api/rift/migrate', 'migration_start', `${paths.length} paths`, { clientIp, pathCount: paths.length, batchSize });
+
         // Auth to both environments
         send({ type: 'status', message: 'Authenticating...' });
         const [sourceToken, targetToken] = await Promise.all([
@@ -308,29 +343,27 @@ export async function POST(request: NextRequest) {
         let totalUpdated = 0;
         let totalPulled = 0;
 
-        // Process each path independently to limit memory usage
         for (let i = 0; i < sortedPaths.length; i++) {
           const p = sortedPaths[i];
-          const scope = SCOPE_MAP[p.scope] || 'ITEM_AND_DESCENDANTS';
+          const scope = VALID_SCOPES[p.scope];
           const isMedia = p.itemPath.toLowerCase().startsWith('/sitecore/media library');
           const label = isMedia ? 'Media' : 'Content';
 
           send({ type: 'status', message: `[${i + 1}/${sortedPaths.length}] Pulling ${label}: ${p.itemPath}...` });
 
-          // Pull items for this path
           let items: Record<string, unknown>[];
           try {
             items = await pullItemData(source.cmUrl, sourceToken, p.itemPath, scope);
             send({ type: 'pull-complete', path: p.itemPath, itemCount: items.length });
             totalPulled += items.length;
           } catch (err) {
-            send({ type: 'error', message: `Failed to pull ${p.itemPath}: ${err instanceof Error ? err.message : String(err)}` });
+            console.error(`[Rift migrate] Pull failed for ${p.itemPath}:`, err instanceof Error ? err.message : String(err));
+            send({ type: 'error', message: `Failed to pull ${p.itemPath}` });
             continue;
           }
 
           if (items.length === 0) continue;
 
-          // Check what exists on target for this path
           send({ type: 'status', message: `Checking target for existing items in ${p.itemPath}...` });
           let existingIds: Set<string>;
           try {
@@ -339,18 +372,18 @@ export async function POST(request: NextRequest) {
             existingIds = new Set();
           }
 
-          // Process and push this path's items
           const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize);
 
           totalSucceeded += result.succeeded;
           totalFailed += result.failed;
           totalCreated += result.created;
           totalUpdated += result.updated;
-
-          // Items array goes out of scope here, allowing GC to reclaim memory
         }
 
-        // Summary
+        logOperation('/api/rift/migrate', 'migration_complete', undefined, {
+          clientIp, totalPulled, totalSucceeded, totalFailed, totalCreated, totalUpdated,
+        });
+
         send({
           type: 'complete',
           totalItems: totalPulled,
@@ -364,7 +397,9 @@ export async function POST(request: NextRequest) {
             : `Migration complete: ${totalSucceeded} migrated (${totalCreated} created, ${totalUpdated} updated), ${totalFailed} failed.`,
         });
       } catch (err) {
-        send({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+        const detail = err instanceof Error ? err.message : String(err);
+        logError('/api/rift/migrate', 'migration_fatal_error', detail, { clientIp });
+        send({ type: 'error', message: 'Migration failed unexpectedly' });
       } finally {
         controller.close();
       }

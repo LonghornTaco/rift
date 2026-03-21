@@ -143,7 +143,7 @@ export function ActionBar({
       >
         <div className="flex items-center gap-4">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="ghost" size="icon" onClick={handleCancel} aria-label="Cancel" className="hover:bg-neutral-bg" />}><Icon path={mdiClose} size={1} /></TooltipTrigger>
+            <TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={handleCancel} aria-label="Cancel" className="hover:bg-neutral-bg"><Icon path={mdiClose} size={1} /></Button></TooltipTrigger>
             <TooltipContent>Cancel</TooltipContent>
           </Tooltip>
 
@@ -172,7 +172,7 @@ export function ActionBar({
           <div className="flex sm:hidden items-center gap-2">
             {defaultButtons.map((button, index) => (
               <Tooltip key={index}>
-                <TooltipTrigger render={<Button variant="ghost" size="icon" onClick={button.onClick} className="text-foreground hover:bg-neutral-bg" aria-label={button.ariaLabel || button.label} />}>{button.icon && <Icon path={button.icon} size={1} />}</TooltipTrigger>
+                <TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={button.onClick} className="text-foreground hover:bg-neutral-bg" aria-label={button.ariaLabel || button.label}>{button.icon && <Icon path={button.icon} size={1} />}</Button></TooltipTrigger>
                 <TooltipContent>{button.label}</TooltipContent>
               </Tooltip>
             ))}
@@ -182,7 +182,7 @@ export function ActionBar({
           {defaultMenuItems.length > 0 && (
             <DropdownMenu>
               <Tooltip>
-                <TooltipTrigger render={<DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="hover:bg-neutral-bg" aria-label="More" />} />}><Icon path={mdiDotsHorizontal} size={1} /></TooltipTrigger>
+                <TooltipTrigger asChild><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="hover:bg-neutral-bg" aria-label="More"><Icon path={mdiDotsHorizontal} size={1} /></Button></DropdownMenuTrigger></TooltipTrigger>
                 <TooltipContent>More</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="start">

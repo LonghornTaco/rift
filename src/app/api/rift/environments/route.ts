@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { upstreamError } from '@/lib/rift/api-security';
 
 interface EnvironmentsRequestBody {
   accessToken: string;
@@ -35,18 +36,15 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json(
-        { error: `Failed to fetch environments: ${response.status}`, details: errorText },
-        { status: response.status }
-      );
+      return upstreamError('environments', response.status, errorText);
     }
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Rift environments] Connection error:', err instanceof Error ? err.message : String(err));
     return NextResponse.json(
-      { error: `Failed to connect to Deploy API: ${message}` },
+      { error: 'Failed to connect to Deploy API' },
       { status: 502 }
     );
   }

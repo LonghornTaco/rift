@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateCmUrl, validateItemPath, upstreamError, sanitizeError } from '@/lib/rift/api-security';
 
 interface TreeRequestBody {
   cmUrl: string;
@@ -22,18 +23,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!/^\/[a-zA-Z0-9\s\-_\/()]+$/.test(parentPath)) {
-    return NextResponse.json(
-      { error: 'Invalid parentPath format' },
-      { status: 400 }
-    );
+  const cmUrlError = validateCmUrl(cmUrl);
+  if (cmUrlError) {
+    return NextResponse.json({ error: cmUrlError }, { status: 400 });
   }
 
-  const safePath = parentPath.replace(/"/g, '\\"');
+  const pathError = validateItemPath(parentPath);
+  if (pathError) {
+    return NextResponse.json({ error: 'Invalid parentPath format' }, { status: 400 });
+  }
 
   const query = `
-    query {
-      item(where: { path: "${safePath}", language: "en", database: "master" }) {
+    query($path: String!) {
+      item(where: { path: $path, language: "en", database: "master" }) {
         children {
           nodes {
             itemId
@@ -57,15 +59,12 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables: { path: parentPath } }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json(
-        { error: `GraphQL request failed: ${response.status}`, details: errorText },
-        { status: response.status }
-      );
+      return upstreamError('tree', response.status, errorText);
     }
 
     const data = await response.json();
@@ -81,10 +80,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ children });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
-      { error: `Failed to query content tree: ${message}` },
-      { status: 502 }
-    );
+    return sanitizeError('tree', err);
   }
 }

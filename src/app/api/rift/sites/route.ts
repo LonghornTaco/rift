@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateCmUrl, upstreamError, sanitizeError } from '@/lib/rift/api-security';
 
 interface SitesRequestBody {
   cmUrl: string;
@@ -19,6 +20,11 @@ export async function POST(request: NextRequest) {
       { error: 'cmUrl and accessToken are required' },
       { status: 400 }
     );
+  }
+
+  const cmUrlError = validateCmUrl(cmUrl);
+  if (cmUrlError) {
+    return NextResponse.json({ error: cmUrlError }, { status: 400 });
   }
 
   const query = `
@@ -57,10 +63,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json(
-        { error: `GraphQL request failed: ${response.status}`, details: errorText },
-        { status: response.status }
-      );
+      return upstreamError('sites', response.status, errorText);
     }
 
     const data = await response.json();
@@ -81,10 +84,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ sites });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
-      { error: `Failed to discover sites: ${message}` },
-      { status: 502 }
-    );
+    return sanitizeError('sites', err);
   }
 }

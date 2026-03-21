@@ -28,18 +28,19 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('[Rift projects] Upstream error:', response.status, errorText);
       return NextResponse.json(
-        { error: `Failed to fetch projects: ${response.status}`, details: errorText },
-        { status: response.status }
+        { error: 'Failed to fetch projects' },
+        { status: response.status >= 400 && response.status < 500 ? response.status : 502 }
       );
     }
 
     const data = await response.json();
     return NextResponse.json(data);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Rift projects] Connection error:', err instanceof Error ? err.message : String(err));
     return NextResponse.json(
-      { error: `Failed to connect to Deploy API: ${message}` },
+      { error: 'Failed to connect to Deploy API' },
       { status: 502 }
     );
   }

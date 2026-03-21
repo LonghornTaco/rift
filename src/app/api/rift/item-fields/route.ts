@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateCmUrl, validateItemPath, upstreamError, sanitizeError } from '@/lib/rift/api-security';
 
 interface ItemFieldsRequestBody {
   cmUrl: string;
@@ -23,15 +24,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!/^\/[a-zA-Z0-9\s\-_\/()]+$/.test(itemPath)) {
+  const cmUrlError = validateCmUrl(cmUrl);
+  if (cmUrlError) {
+    return NextResponse.json({ error: cmUrlError }, { status: 400 });
+  }
+
+  const pathError = validateItemPath(itemPath);
+  if (pathError) {
     return NextResponse.json({ error: 'Invalid itemPath format' }, { status: 400 });
   }
 
-  const safePath = itemPath.replace(/"/g, '\\"');
-
   const query = `
-    query {
-      item(where: { path: "${safePath}", language: "en", database: "master" }) {
+    query($path: String!) {
+      item(where: { path: $path, language: "en", database: "master" }) {
         itemId
         name
         path
@@ -56,31 +61,23 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables: { path: itemPath } }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json(
-        { error: `GraphQL request failed: ${response.status}`, details: errorText },
-        { status: response.status }
-      );
+      return upstreamError('item-fields', response.status, errorText);
     }
 
     const data = await response.json();
 
-    // Log GraphQL errors if any
     if (data?.errors) {
       console.error('[Rift item-fields] GraphQL errors:', JSON.stringify(data.errors));
-      return NextResponse.json(
-        { error: 'GraphQL query error', details: JSON.stringify(data.errors) },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'GraphQL query error' }, { status: 400 });
     }
 
     const item = data?.data?.item;
     if (!item) {
-      console.error('[Rift item-fields] Item not found. Path:', itemPath, 'Response:', JSON.stringify(data));
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
@@ -105,10 +102,6 @@ export async function POST(request: NextRequest) {
       fields,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json(
-      { error: `Failed to fetch item fields: ${message}` },
-      { status: 502 }
-    );
+    return sanitizeError('item-fields', err);
   }
 }

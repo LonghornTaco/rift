@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit, getClientIp } from '@/lib/rift/api-security';
+import { logAuth, logRateLimit, logError } from '@/lib/rift/logger';
 
 interface AuthRequestBody {
   clientId: string;
@@ -6,6 +8,17 @@ interface AuthRequestBody {
 }
 
 export async function POST(request: NextRequest) {
+  const clientIp = getClientIp(request);
+
+  // Rate limit: 10 requests per minute per IP
+  if (!rateLimit(clientIp, 60_000, 10)) {
+    logRateLimit('/api/rift/auth', clientIp);
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { status: 429 }
+    );
+  }
+
   let body: AuthRequestBody;
   try {
     body = await request.json();
@@ -35,12 +48,15 @@ export async function POST(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      return NextResponse.json(
-        { error: `Authentication failed: ${tokenResponse.status}`, details: errorText },
-        { status: tokenResponse.status }
-      );
+      const status = tokenResponse.status;
+      logAuth('/api/rift/auth', clientIp, false, `Upstream ${status}`);
+      if (status === 401 || status === 403) {
+        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+      }
+      return NextResponse.json({ error: 'Authentication failed' }, { status: 502 });
     }
 
+    logAuth('/api/rift/auth', clientIp, true);
     const tokenData = await tokenResponse.json();
     return NextResponse.json({
       accessToken: tokenData.access_token,
@@ -48,9 +64,10 @@ export async function POST(request: NextRequest) {
       tokenType: tokenData.token_type,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const detail = err instanceof Error ? err.message : String(err);
+    logError('/api/rift/auth', 'auth_connection_error', detail, { clientIp });
     return NextResponse.json(
-      { error: `Failed to connect to auth server: ${message}` },
+      { error: 'Failed to connect to authentication server' },
       { status: 502 }
     );
   }
