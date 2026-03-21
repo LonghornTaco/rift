@@ -27,11 +27,6 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover';
 
 interface RiftMigrateProps {
   loadedPreset: RiftPreset | null;
@@ -63,6 +58,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [pendingSiteRootPath, setPendingSiteRootPath] = useState<string | null>(null);
   const [loadedTreeNodes, setLoadedTreeNodes] = useState<Map<string, TreeNode[]>>(new Map());
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
@@ -352,7 +348,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         </Button>
 
         {/* Start Migration + Settings */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             disabled={!canStartMigration}
@@ -364,64 +360,78 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           >
             {'\u26A1'} Start Migration
           </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="px-2" title="Migration settings">
-                {'\u2699'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64" align="end">
-              <div className="space-y-3">
-                <div className="text-sm font-semibold text-foreground">Migration Settings</div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1">Batch Size</Label>
-                  <Select
-                    value={String(batchSize)}
-                    onValueChange={(val) => {
-                      const size = Number(val);
-                      setBatchSize(size);
-                      saveSettings({ ...getSettings(), batchSize: size });
-                    }}
-                  >
-                    <SelectTrigger className="w-full h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[25, 50, 100, 200, 500].map((n) => (
-                        <SelectItem key={n} value={String(n)}>{n} items</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1">Log Level</Label>
-                  <Select
-                    value={logLevel}
-                    onValueChange={(val) => {
-                      const level = val as MigrationLogLevel;
-                      setLogLevel(level);
-                      saveSettings({ ...getSettings(), logLevel: level });
-                    }}
-                  >
-                    <SelectTrigger className="w-full h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ERROR">Error</SelectItem>
-                      <SelectItem value="WARNING">Warning</SelectItem>
-                      <SelectItem value="INFORMATION">Information</SelectItem>
-                      <SelectItem value="DEBUG">Debug</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Controls detail level in migration log
-                  </p>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="text-xl text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            title="Migration settings"
+          >
+            {'\u2699\uFE0F'}
+          </button>
         </div>
       </div>
+
+      {/* Migration Settings Modal */}
+      <Dialog open={showSettingsModal} onOpenChange={setShowSettingsModal}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Migration Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Batch Size</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Number of items pushed per request. Larger batches are faster but may timeout on slow connections.
+              </p>
+              <Select
+                value={String(batchSize)}
+                onValueChange={(val) => {
+                  const size = Number(val);
+                  setBatchSize(size);
+                  saveSettings({ ...getSettings(), batchSize: size });
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25 (conservative)</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200 (default)</SelectItem>
+                  <SelectItem value="500">500 (aggressive)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Log Level</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Controls the detail level of messages in the migration log.
+              </p>
+              <Select
+                value={logLevel}
+                onValueChange={(val) => {
+                  const level = val as MigrationLogLevel;
+                  setLogLevel(level);
+                  saveSettings({ ...getSettings(), logLevel: level });
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ERROR">Error — only failures</SelectItem>
+                  <SelectItem value="WARNING">Warning — failures and warnings</SelectItem>
+                  <SelectItem value="INFORMATION">Information — standard detail (default)</SelectItem>
+                  <SelectItem value="DEBUG">Debug — maximum detail</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowSettingsModal(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmation Dialog */}
       {showConfirmDialog && selectedEnvId && selectedTargetEnvId && (
