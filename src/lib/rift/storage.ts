@@ -1,6 +1,6 @@
 import type { RiftEnvironment, RiftPreset, RiftSettings } from './types';
 import { DEFAULT_SETTINGS } from './types';
-import { encrypt, decrypt, isEncrypted, type EncryptedValue } from './crypto';
+import { encrypt, decrypt, type EncryptedValue } from './crypto';
 
 const ENVS_KEY = 'rift:environments';
 const PRESETS_KEY = 'rift:presets';
@@ -36,12 +36,8 @@ async function decryptEnv(stored: StoredEnvironment): Promise<RiftEnvironment> {
     id: stored.id,
     name: stored.name,
     cmUrl: stored.cmUrl,
-    clientId: isEncrypted(stored.clientId)
-      ? await decrypt(stored.clientId)
-      : stored.clientId,
-    clientSecret: isEncrypted(stored.clientSecret)
-      ? await decrypt(stored.clientSecret)
-      : stored.clientSecret,
+    clientId: await decrypt(stored.clientId as EncryptedValue),
+    clientSecret: await decrypt(stored.clientSecret as EncryptedValue),
     allowWrite: stored.allowWrite,
   };
 }

@@ -5,8 +5,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('@/lib/rift/crypto', () => ({
   encrypt: async (plaintext: string) => ({ ct: plaintext, iv: 'mock-iv' }),
   decrypt: async (encrypted: { ct: string }) => encrypted.ct,
-  isEncrypted: (value: unknown) =>
-    typeof value === 'object' && value !== null && 'ct' in value && 'iv' in value,
 }));
 
 import {

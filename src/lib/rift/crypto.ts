@@ -102,15 +102,3 @@ export async function decrypt(encrypted: EncryptedValue): Promise<string> {
   return new TextDecoder().decode(plainBuffer);
 }
 
-/**
- * Check if a value is an encrypted object (has ct and iv fields)
- * vs. a plaintext string (for backward compatibility with existing data).
- */
-export function isEncrypted(value: unknown): value is EncryptedValue {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'ct' in value &&
-    'iv' in value
-  );
-}
