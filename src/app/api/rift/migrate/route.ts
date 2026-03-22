@@ -444,7 +444,7 @@ export async function POST(request: NextRequest) {
           totalCreated += result.created;
           totalUpdated += result.updated;
 
-          // Recurse into children that have their own children
+          // Recurse into children that have their own children (parallel, limited concurrency)
           let children: { path: string; hasChildren: boolean }[];
           try {
             children = await fetchChildPaths(source.cmUrl, sourceToken, itemPath);
@@ -452,10 +452,11 @@ export async function POST(request: NextRequest) {
             children = [];
           }
 
-          for (const child of children) {
-            if (child.hasChildren) {
-              await migrateSubtree(child.path, label, depth + 1);
-            }
+          const childrenWithSubs = children.filter((c) => c.hasChildren);
+          const CONCURRENCY = 3;
+          for (let ci = 0; ci < childrenWithSubs.length; ci += CONCURRENCY) {
+            const batch = childrenWithSubs.slice(ci, ci + CONCURRENCY);
+            await Promise.all(batch.map((child) => migrateSubtree(child.path, label, depth + 1)));
           }
         }
 

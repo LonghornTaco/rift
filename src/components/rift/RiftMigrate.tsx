@@ -460,79 +460,105 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
               console.log('[Rift] Starting migration with', selectedPaths.length, 'paths...');
 
-              const response = await fetch('/api/rift/migrate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  source: {
-                    cmUrl: sourceEnv.cmUrl,
-                    clientId: sourceEnv.clientId,
-                    clientSecret: sourceEnv.clientSecret,
-                  },
-                  target: {
-                    cmUrl: targetEnv.cmUrl,
-                    clientId: targetEnv.clientId,
-                    clientSecret: targetEnv.clientSecret,
-                  },
-                  paths: selectedPaths.map((p) => ({
-                    itemPath: p.itemPath,
-                    scope: p.scope,
-                  })),
-                  batchSize,
-                  logLevel,
-                }),
-              });
+              // Send one request per path so each gets its own timeout budget
+              for (let pi = 0; pi < selectedPaths.length; pi++) {
+                const p = selectedPaths[pi];
+                addMsg({ type: 'status', message: `[${pi + 1}/${selectedPaths.length}] Starting: ${p.itemPath} (${p.scope})...` });
 
-              if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                addMsg({ type: 'error', message: errData.error || `Request failed: ${response.status}` });
-                setMigrationComplete(true);
-                setIsMigrating(false);
-                return;
-              }
+                const response = await fetch('/api/rift/migrate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    source: {
+                      cmUrl: sourceEnv.cmUrl,
+                      clientId: sourceEnv.clientId,
+                      clientSecret: sourceEnv.clientSecret,
+                    },
+                    target: {
+                      cmUrl: targetEnv.cmUrl,
+                      clientId: targetEnv.clientId,
+                      clientSecret: targetEnv.clientSecret,
+                    },
+                    paths: [{ itemPath: p.itemPath, scope: p.scope }],
+                    batchSize,
+                    logLevel,
+                  }),
+                });
 
-              // Read the NDJSON stream
-              const reader = response.body!.getReader();
-              const decoder = new TextDecoder();
-              let buffer = '';
+                if (!response.ok) {
+                  const errData = await response.json().catch(() => ({}));
+                  addMsg({ type: 'error', message: `${p.itemPath}: ${errData.error || `Request failed: ${response.status}`}` });
+                  continue;
+                }
 
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-                for (const line of lines) {
-                  if (line.trim()) {
-                    try {
-                      const msg = JSON.parse(line) as MigrationMessage;
-                      console.log('[Rift] Stream message:', msg);
-                      addMsg(msg);
-                    } catch (parseErr) {
-                      console.warn('[Rift] Failed to parse stream line:', line, parseErr);
+                // Read the NDJSON stream for this path
+                const reader = response.body!.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let gotComplete = false;
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+                  for (const line of lines) {
+                    if (line.trim()) {
+                      try {
+                        const msg = JSON.parse(line) as MigrationMessage;
+                        if (msg.type === 'complete') gotComplete = true;
+                        // Don't show per-path auth messages after the first path
+                        if (pi > 0 && msg.type === 'status' && (msg.message as string)?.startsWith('Authenticat')) continue;
+                        addMsg(msg);
+                      } catch (parseErr) {
+                        console.warn('[Rift] Failed to parse stream line:', line, parseErr);
+                      }
                     }
                   }
                 }
-              }
 
-              // Process any remaining buffer
-              if (buffer.trim()) {
-                try {
-                  const msg = JSON.parse(buffer) as MigrationMessage;
-                  addMsg(msg);
-                } catch {
-                  console.warn('[Rift] Failed to parse final buffer:', buffer);
+                if (buffer.trim()) {
+                  try {
+                    const msg = JSON.parse(buffer) as MigrationMessage;
+                    if (msg.type === 'complete') gotComplete = true;
+                    addMsg(msg);
+                  } catch {
+                    console.warn('[Rift] Failed to parse final buffer:', buffer);
+                  }
+                }
+
+                if (!gotComplete) {
+                  addMsg({
+                    type: 'error',
+                    message: `${p.itemPath}: Connection lost — the server stopped responding. This usually means the request timed out. Try reducing the scope or batch size.`,
+                  });
                 }
               }
 
-              // Detect unexpected stream termination (e.g., Vercel function timeout)
-              const hasComplete = localMessages.some((m) => m.type === 'complete');
-              if (!hasComplete) {
-                addMsg({
-                  type: 'error',
-                  message: 'Connection lost — the server stopped responding. This usually means the request timed out. Try reducing the scope or batch size.',
-                });
-              }
+              // Final summary
+              const completeMsgs = localMessages.filter((m) => m.type === 'complete');
+              const totalSucceeded = completeMsgs.reduce((s, m) => s + ((m.succeeded as number) || 0), 0);
+              const totalFailed = completeMsgs.reduce((s, m) => s + ((m.failed as number) || 0), 0);
+              const totalCreated = completeMsgs.reduce((s, m) => s + ((m.created as number) || 0), 0);
+              const totalUpdated = completeMsgs.reduce((s, m) => s + ((m.updated as number) || 0), 0);
+              const totalItems = completeMsgs.reduce((s, m) => s + ((m.totalItems as number) || 0), 0);
+              const hasErrors = localMessages.some((m) => m.type === 'error');
+
+              addMsg({
+                type: 'complete',
+                totalItems,
+                created: totalCreated,
+                updated: totalUpdated,
+                succeeded: totalSucceeded,
+                failed: totalFailed,
+                pushed: totalSucceeded,
+                message: hasErrors && totalSucceeded === 0
+                  ? 'Migration failed.'
+                  : totalFailed === 0 && !hasErrors
+                    ? `Migration complete: ${totalSucceeded} items migrated (${totalCreated} created, ${totalUpdated} updated).`
+                    : `Migration complete: ${totalSucceeded} migrated (${totalCreated} created, ${totalUpdated} updated), ${totalFailed} failed.`,
+              });
             } catch (err) {
               console.error('[Rift] Migration failed:', err);
               addMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -542,7 +568,9 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
               // Save migration history
               const elapsedMs = Date.now() - migrationStartRef.current;
-              const completeMsg = localMessages.find((m) => m.type === 'complete');
+              // Use the last complete message (the client-side aggregate)
+              const completeMsgs = localMessages.filter((m) => m.type === 'complete');
+              const completeMsg = completeMsgs.length > 0 ? completeMsgs[completeMsgs.length - 1] : null;
               const hasErrors = localMessages.some((m) => m.type === 'error');
               const sourceEnv = environments.find((e) => e.id === selectedEnvId);
               const targetEnv = environments.find((e) => e.id === selectedTargetEnvId);
