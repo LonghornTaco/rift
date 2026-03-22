@@ -57,7 +57,41 @@ function managementUrl(cmUrl: string): string {
   return `${cmUrl.replace(/\/$/, '')}${MANAGEMENT_PATH}`;
 }
 
-// Pull full item data for a single path using GraphQL variables
+function authoringUrl(cmUrl: string): string {
+  return `${cmUrl.replace(/\/$/, '')}/sitecore/api/authoring/graphql/v1`;
+}
+
+// Fetch child paths from the authoring API for tree walking
+async function fetchChildPaths(
+  cmUrl: string,
+  token: string,
+  parentPath: string
+): Promise<{ path: string; hasChildren: boolean }[]> {
+  const query = `
+    query($path: String!) {
+      item(where: { path: $path, language: "en", database: "master" }) {
+        children {
+          nodes {
+            path
+            hasChildren
+          }
+        }
+      }
+    }
+  `;
+
+  const res = await fetch(authoringUrl(cmUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ query, variables: { path: parentPath } }),
+  });
+
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json?.data?.item?.children?.nodes ?? [];
+}
+
+// Pull full item data for a single path
 async function pullItemData(
   cmUrl: string,
   token: string,
@@ -372,42 +406,101 @@ export async function POST(request: NextRequest) {
         let totalUpdated = 0;
         let totalPulled = 0;
 
+        // Pull, check, and push a single subtree (ITEM_AND_CHILDREN scope)
+        // then recurse into children that have descendants
+        async function migrateSubtree(
+          itemPath: string,
+          label: string,
+          depth: number
+        ): Promise<void> {
+          const indent = depth > 0 ? `${'  '.repeat(depth)}↳ ` : '';
+          send({ type: 'status', message: `${indent}Pulling ${label}: ${itemPath}...` });
+
+          let items: Record<string, unknown>[];
+          try {
+            items = await pullItemData(source.cmUrl, sourceToken, itemPath, 'ITEM_AND_CHILDREN');
+            send({ type: 'pull-complete', path: itemPath, itemCount: items.length });
+            totalPulled += items.length;
+          } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err);
+            console.error(`[Rift migrate] Pull failed for ${itemPath}:`, detail);
+            send({ type: 'error', message: `Failed to pull ${itemPath}: ${detail}` });
+            return;
+          }
+
+          if (items.length === 0) return;
+
+          // Check target for existing items at this level
+          let existingIds: Set<string>;
+          try {
+            existingIds = await pullExistingIds(target.cmUrl, targetToken, itemPath, 'ITEM_AND_CHILDREN');
+          } catch {
+            existingIds = new Set();
+          }
+
+          const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize, logLevel);
+          totalSucceeded += result.succeeded;
+          totalFailed += result.failed;
+          totalCreated += result.created;
+          totalUpdated += result.updated;
+
+          // Recurse into children that have their own children
+          let children: { path: string; hasChildren: boolean }[];
+          try {
+            children = await fetchChildPaths(source.cmUrl, sourceToken, itemPath);
+          } catch {
+            children = [];
+          }
+
+          for (const child of children) {
+            if (child.hasChildren) {
+              await migrateSubtree(child.path, label, depth + 1);
+            }
+          }
+        }
+
         for (let i = 0; i < sortedPaths.length; i++) {
           const p = sortedPaths[i];
           const scope = VALID_SCOPES[p.scope];
           const isMedia = p.itemPath.toLowerCase().startsWith('/sitecore/media library');
           const label = isMedia ? 'Media' : 'Content';
 
-          send({ type: 'status', message: `[${i + 1}/${sortedPaths.length}] Pulling ${label}: ${p.itemPath}...` });
+          send({ type: 'status', message: `[${i + 1}/${sortedPaths.length}] Starting ${label}: ${p.itemPath}...` });
 
-          let items: Record<string, unknown>[];
-          try {
-            items = await pullItemData(source.cmUrl, sourceToken, p.itemPath, scope);
-            send({ type: 'pull-complete', path: p.itemPath, itemCount: items.length });
-            totalPulled += items.length;
-          } catch (err) {
-            const detail = err instanceof Error ? err.message : String(err);
-            console.error(`[Rift migrate] Pull failed for ${p.itemPath}:`, detail);
-            send({ type: 'error', message: `Failed to pull ${p.itemPath}: ${detail}` });
-            continue;
+          if (scope === 'ITEM_AND_DESCENDANTS') {
+            // Walk tree depth-first to avoid loading everything into memory
+            await migrateSubtree(p.itemPath, label, 0);
+          } else {
+            // SINGLE_ITEM or ITEM_AND_CHILDREN — bounded, pull directly
+            send({ type: 'status', message: `Pulling ${label}: ${p.itemPath}...` });
+
+            let items: Record<string, unknown>[];
+            try {
+              items = await pullItemData(source.cmUrl, sourceToken, p.itemPath, scope);
+              send({ type: 'pull-complete', path: p.itemPath, itemCount: items.length });
+              totalPulled += items.length;
+            } catch (err) {
+              const detail = err instanceof Error ? err.message : String(err);
+              console.error(`[Rift migrate] Pull failed for ${p.itemPath}:`, detail);
+              send({ type: 'error', message: `Failed to pull ${p.itemPath}: ${detail}` });
+              continue;
+            }
+
+            if (items.length === 0) continue;
+
+            let existingIds: Set<string>;
+            try {
+              existingIds = await pullExistingIds(target.cmUrl, targetToken, p.itemPath, scope);
+            } catch {
+              existingIds = new Set();
+            }
+
+            const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize, logLevel);
+            totalSucceeded += result.succeeded;
+            totalFailed += result.failed;
+            totalCreated += result.created;
+            totalUpdated += result.updated;
           }
-
-          if (items.length === 0) continue;
-
-          send({ type: 'status', message: `Checking target for existing items in ${p.itemPath}...` });
-          let existingIds: Set<string>;
-          try {
-            existingIds = await pullExistingIds(target.cmUrl, targetToken, p.itemPath, scope);
-          } catch {
-            existingIds = new Set();
-          }
-
-          const result = await processAndPushItems(items, existingIds, target.cmUrl, targetToken, send, label, batchSize, logLevel);
-
-          totalSucceeded += result.succeeded;
-          totalFailed += result.failed;
-          totalCreated += result.created;
-          totalUpdated += result.updated;
         }
 
         logOperation('/api/rift/migrate', 'migration_complete', undefined, {
