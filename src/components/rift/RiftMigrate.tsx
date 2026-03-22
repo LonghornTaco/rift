@@ -265,7 +265,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
         {/* Environment */}
         <div>
-          <div className="text-xs font-semibold text-muted-foreground mb-0.5">ENVIRONMENT</div>
+          <div className="text-xs font-semibold text-muted-foreground mb-0.5">SOURCE ENVIRONMENT</div>
           <Select value={selectedEnvId ?? undefined} onValueChange={handleEnvChange} disabled={isMigrating}>
             <SelectTrigger size="sm">
               <SelectValue placeholder="Select environment..." />
@@ -314,7 +314,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
         {/* Target */}
         <div>
-          <div className="text-xs font-semibold text-muted-foreground mb-0.5">TARGET</div>
+          <div className="text-xs font-semibold text-muted-foreground mb-0.5">TARGET ENVIRONMENT</div>
           <Select value={selectedTargetEnvId ?? undefined} onValueChange={(val) => setSelectedTargetEnvId(val)} disabled={isMigrating}>
             <SelectTrigger size="sm">
               <SelectValue placeholder="Select target..." />
