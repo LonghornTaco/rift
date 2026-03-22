@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server';
 import { validateCmUrl, validateItemPath, getClientIp } from '@/lib/rift/api-security';
 import { logOperation, logError } from '@/lib/rift/logger';
 
+// Allow up to 5 minutes for large migrations (Vercel Pro)
+export const maxDuration = 300;
+
 interface MigrateRequestBody {
   source: {
     cmUrl: string;
