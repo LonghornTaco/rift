@@ -524,6 +524,15 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                   console.warn('[Rift] Failed to parse final buffer:', buffer);
                 }
               }
+
+              // Detect unexpected stream termination (e.g., Vercel function timeout)
+              const hasComplete = localMessages.some((m) => m.type === 'complete');
+              if (!hasComplete) {
+                addMsg({
+                  type: 'error',
+                  message: 'Connection lost — the server stopped responding. This usually means the request timed out. Try reducing the scope or batch size.',
+                });
+              }
             } catch (err) {
               console.error('[Rift] Migration failed:', err);
               addMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
