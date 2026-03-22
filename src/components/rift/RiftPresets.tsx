@@ -89,12 +89,13 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
             No presets saved yet. Create one from the Migrate screen.
           </div>
         ) : (
-          presets.map((preset) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {presets.map((preset) => (
             <Card
               key={preset.id}
               style="outline"
               padding="md"
-              className="mb-3"
+              className="flex flex-col"
             >
               {/* Name / Rename */}
               {renamingId === preset.id ? (
@@ -181,7 +182,8 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
                 </Button>
               </div>
             </Card>
-          ))
+          ))}
+          </div>
         )}
       </div>
     </div>
