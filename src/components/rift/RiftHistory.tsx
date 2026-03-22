@@ -88,7 +88,8 @@ export function RiftHistory() {
                 className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer hover:bg-muted/50"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', statusColors[entry.status])}>
+                  <span className="text-[10px] text-muted-foreground shrink-0 w-24">{formatDate(entry.date)}</span>
+                  <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0', statusColors[entry.status])}>
                     {statusLabels[entry.status]}
                   </span>
                   <div className="min-w-0">
@@ -96,7 +97,7 @@ export function RiftHistory() {
                       {entry.sourceEnvName} &rarr; {entry.targetEnvName}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatDate(entry.date)} &middot; {formatElapsed(entry.elapsedMs)} &middot; {entry.paths.length} {entry.paths.length === 1 ? 'path' : 'paths'}
+                      {formatElapsed(entry.elapsedMs)} &middot; {entry.paths.length} {entry.paths.length === 1 ? 'path' : 'paths'}
                     </div>
                   </div>
                 </div>

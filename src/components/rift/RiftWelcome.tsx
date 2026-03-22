@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RiftPreset } from '@/lib/rift/types';
-import { getPresets } from '@/lib/rift/storage';
+import { RiftPreset, RiftEnvironment } from '@/lib/rift/types';
+import { getPresets, getEnvironments } from '@/lib/rift/storage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -22,10 +22,15 @@ function formatDate(iso: string): string {
 
 export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) {
   const [presets, setPresets] = useState<RiftPreset[]>([]);
+  const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
 
   useEffect(() => {
     setPresets(getPresets());
+    getEnvironments().then(setEnvironments);
   }, []);
+
+  const envName = (id?: string) => environments.find((e) => e.id === id)?.name ?? '';
+  const siteName = (path?: string) => path?.split('/').pop() ?? '';
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full flex-1 p-8">
@@ -72,6 +77,13 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {preset.paths.length} {preset.paths.length === 1 ? 'path' : 'paths'} &middot; Last used {formatDate(preset.lastUsed)}
                   </div>
+                  {(preset.sourceEnvId || preset.targetEnvId || preset.siteRootPath) && (
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      {envName(preset.sourceEnvId) && <span>{envName(preset.sourceEnvId)}</span>}
+                      {envName(preset.targetEnvId) && <span> &rarr; {envName(preset.targetEnvId)}</span>}
+                      {siteName(preset.siteRootPath) && <span> &middot; {siteName(preset.siteRootPath)}</span>}
+                    </div>
+                  )}
                 </div>
                 <div className="text-xs text-primary font-medium">
                   Load &rarr;
