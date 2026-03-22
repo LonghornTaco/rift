@@ -85,29 +85,26 @@ export function RiftHistory() {
             >
               <button
                 onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-                className="w-full px-4 py-3 flex items-center justify-between text-left cursor-pointer hover:bg-muted/50"
+                className="w-full px-4 py-3 grid items-center text-left cursor-pointer hover:bg-muted/50"
+                style={{ gridTemplateColumns: '7rem 4.5rem 1fr 6rem 1.5rem' }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-[10px] text-muted-foreground shrink-0 w-24">{formatDate(entry.date)}</span>
-                  <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0', statusColors[entry.status])}>
-                    {statusLabels[entry.status]}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">
-                      {entry.sourceEnvName} &rarr; {entry.targetEnvName}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatElapsed(entry.elapsedMs)} &middot; {entry.paths.length} {entry.paths.length === 1 ? 'path' : 'paths'}
-                    </div>
+                <span className="text-[11px] text-muted-foreground">{formatDate(entry.date)}</span>
+                <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded w-fit', statusColors[entry.status])}>
+                  {statusLabels[entry.status]}
+                </span>
+                <div className="min-w-0 px-3">
+                  <div className="text-sm font-medium text-foreground truncate">
+                    {entry.sourceEnvName} &rarr; {entry.targetEnvName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatElapsed(entry.elapsedMs)} &middot; {entry.paths.length} {entry.paths.length === 1 ? 'path' : 'paths'}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <div className="text-xs text-muted-foreground text-right">
-                    {entry.succeeded > 0 && <span className="text-green-600 dark:text-green-400">{entry.succeeded} ok</span>}
-                    {entry.failed > 0 && <span className="text-destructive ml-2">{entry.failed} failed</span>}
-                  </div>
-                  <span className="text-muted-foreground text-xs">{expandedId === entry.id ? '\u25B2' : '\u25BC'}</span>
+                <div className="text-xs text-right px-2">
+                  {entry.succeeded > 0 && <span className="text-green-600 dark:text-green-400">{entry.succeeded} ok</span>}
+                  {entry.failed > 0 && <span className="text-destructive ml-2">{entry.failed} failed</span>}
                 </div>
+                <span className="text-muted-foreground text-xs text-right">{expandedId === entry.id ? '\u25B2' : '\u25BC'}</span>
               </button>
 
               {expandedId === entry.id && (
