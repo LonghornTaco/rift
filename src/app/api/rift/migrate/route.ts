@@ -467,11 +467,12 @@ export async function POST(request: NextRequest) {
 
           send({ type: 'status', message: `[${i + 1}/${sortedPaths.length}] Starting ${label}: ${p.itemPath}...` });
 
-          if (scope === 'ITEM_AND_DESCENDANTS') {
-            // Walk tree depth-first to avoid loading everything into memory
+          if (scope === 'ITEM_AND_DESCENDANTS' && isMedia) {
+            // Walk media tree depth-first to avoid OOM from large binary blobs
             await migrateSubtree(p.itemPath, label, 0);
           } else {
-            // SINGLE_ITEM or ITEM_AND_CHILDREN — bounded, pull directly
+            // Content descendants (small items, safe to pull at once),
+            // SINGLE_ITEM, or ITEM_AND_CHILDREN — pull directly
             send({ type: 'status', message: `Pulling ${label}: ${p.itemPath}...` });
 
             let items: Record<string, unknown>[];
