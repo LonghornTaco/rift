@@ -123,7 +123,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
             : 'Migration in progress...'}
         </span>
         <div className="flex items-center gap-1">
-          {messages.length > 0 && (
+          {isFinished && messages.length > 0 && (
             <Button
               variant="ghost"
               size="sm"
