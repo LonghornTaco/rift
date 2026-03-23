@@ -15,6 +15,7 @@ interface RiftProgressOverlayProps {
   isActive: boolean;
   messages: MigrationMessage[];
   onClose: () => void;
+  parallelPaths?: boolean;
 }
 
 function formatElapsed(ms: number): string {
@@ -31,7 +32,7 @@ function formatElapsed(ms: number): string {
   return `${seconds}s`;
 }
 
-export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgressOverlayProps) {
+export function RiftProgressOverlay({ isActive, messages, onClose, parallelPaths }: RiftProgressOverlayProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [copyLabel, setCopyLabel] = useState('Copy Log');
@@ -233,7 +234,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
           </span>
         </div>
 
-        {pathStatuses.length > 1 ? (
+        {parallelPaths && pathStatuses.length > 1 ? (
           // Per-path compact status rows
           <div className="space-y-1.5 mb-2">
             {pathStatuses.map((ps, i) => {

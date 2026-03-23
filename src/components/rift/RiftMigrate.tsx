@@ -762,6 +762,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           <RiftProgressOverlay
             isActive={isMigrating}
             messages={migrationMessages}
+            parallelPaths={parallelPaths}
             onClose={() => {
               setMigrationComplete(false);
               setMigrationMessages([]);
