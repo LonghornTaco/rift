@@ -77,6 +77,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [pendingDangerousNode, setPendingDangerousNode] = useState<TreeNode | null>(null);
   const [showIarSecondWarning, setShowIarSecondWarning] = useState(false);
   const [showIarMigrationWarning, setShowIarMigrationWarning] = useState(false);
+  const [pendingMediaLibraryNode, setPendingMediaLibraryNode] = useState<TreeNode | null>(null);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
@@ -148,6 +149,12 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       const exists = selectedPaths.find((p) => p.itemPath === node.path);
       if (exists) {
         setSelectedPaths((prev) => prev.filter((p) => p.itemPath !== node.path));
+        return;
+      }
+
+      // Check if selecting the entire media library
+      if (node.path.toLowerCase() === '/sitecore/media library') {
+        setPendingMediaLibraryNode(node);
         return;
       }
 
@@ -879,6 +886,31 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 }}
               >
                 Cancel Migration
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Entire media library selection warning */}
+        <AlertDialog open={!!pendingMediaLibraryNode} onOpenChange={(open) => { if (!open) setPendingMediaLibraryNode(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Entire Media Library</AlertDialogTitle>
+              <AlertDialogDescription>
+                You are about to select the entire media library. This could include a very large number of items and may take a long time to migrate. Are you sure you want to include all media library items?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (pendingMediaLibraryNode) {
+                    addPathToSelection(pendingMediaLibraryNode);
+                  }
+                  setPendingMediaLibraryNode(null);
+                }}
+              >
+                Select All Media
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
