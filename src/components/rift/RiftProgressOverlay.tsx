@@ -236,18 +236,14 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
 
       {/* Progress section */}
       <div className="px-4 py-3 shrink-0 border-b border-border">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-foreground">
-            {isActive ? 'Migration in progress' : 'Migration finished'}
-          </span>
-          <span className="text-xs font-mono text-muted-foreground tabular-nums">
-            {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
-          </span>
-        </div>
-
         {parallelPaths && pathStatuses.length > 1 ? (
           // Per-path compact status rows
-          <div className="space-y-1.5 mb-2">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-end mb-1">
+              <span className="text-xs font-mono text-muted-foreground tabular-nums">
+                {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
+              </span>
+            </div>
             {pathStatuses.map((ps, i) => {
               const pct = ps.total > 0 ? Math.round((ps.pushed / ps.total) * 100) : (ps.complete ? 100 : 0);
               return (
@@ -270,6 +266,14 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
         ) : (
           // Single path: original progress bar
           <>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-foreground">
+                {isActive ? 'Migration in progress' : 'Migration finished'}
+              </span>
+              <span className="text-xs font-mono text-muted-foreground tabular-nums">
+                {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
+              </span>
+            </div>
             {isActive && (
               <Progress
                 value={progressPercent ?? undefined}
