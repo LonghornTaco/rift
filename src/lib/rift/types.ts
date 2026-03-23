@@ -49,7 +49,7 @@ export interface RiftSettings {
 export const DEFAULT_SETTINGS: RiftSettings = {
   batchSize: 200,
   logLevel: 'INFORMATION',
-  parallelPaths: false,
+  parallelPaths: true,
 };
 
 export interface MigrationHistoryEntry {
