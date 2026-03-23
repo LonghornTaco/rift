@@ -5,8 +5,6 @@ import { TreeNode, MigrationPath } from '@/lib/rift/types';
 import { fetchTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 
-// Items under /sitecore/content that are typically IAR-managed (used for visual indicator only)
-const IAR_WARN_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {
@@ -20,7 +18,8 @@ interface TreeNodeRowProps {
   onExpand: (node: TreeNode) => void;
   onTogglePath: (node: TreeNode) => void;
   showHiddenItems: boolean;
-  isContentTree?: boolean;
+  /** Paths that should have disabled checkboxes (content tree ancestors) */
+  disabledAncestorPaths?: Set<string>;
   /** Set of child paths to show when hidden items are off. If undefined, no filtering. */
   visibleChildPaths?: Set<string>;
 }
@@ -36,14 +35,14 @@ function TreeNodeRow({
   onExpand,
   onTogglePath,
   showHiddenItems,
-  isContentTree,
+  disabledAncestorPaths,
   visibleChildPaths,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.itemId);
   const isLoading = loadingNodes.has(node.itemId);
   const isSelected = selectedPathSet.has(node.path);
   const isInherited = inheritedPaths.has(node.path);
-  const isIarWarn = isContentTree && IAR_WARN_NAMES.has(node.name.toLowerCase());
+  const isAncestorDisabled = disabledAncestorPaths?.has(node.path) ?? false;
   let children = childrenCache.get(node.path) ?? [];
 
   // Filter children based on visible paths (when hidden items are off)
@@ -78,15 +77,15 @@ function TreeNodeRow({
         <Checkbox
           checked={isSelected || isInherited}
           onCheckedChange={() => onTogglePath(node)}
-          disabled={isInherited}
+          disabled={isInherited || isAncestorDisabled}
           className={cn(
             'shrink-0',
-            isInherited && 'opacity-50 pointer-events-none'
+            (isInherited || isAncestorDisabled) && 'opacity-50 pointer-events-none'
           )}
         />
 
         {/* Icon */}
-        <span className="text-muted-foreground shrink-0">
+        <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
           {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
         </span>
 
@@ -94,14 +93,11 @@ function TreeNodeRow({
         <span
           className={cn(
             isSelected ? 'font-bold' : 'font-normal',
-            isInherited ? 'text-muted-foreground' : 'text-foreground',
+            (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
           )}
         >
           {node.name}
         </span>
-        {isIarWarn && (
-          <span className="text-[9px] text-amber-500/70 ml-1">IAR</span>
-        )}
       </div>
 
       {/* Children — pass visibleChildPaths only to this level, children render without it */}
@@ -119,7 +115,7 @@ function TreeNodeRow({
             onExpand={onExpand}
             onTogglePath={onTogglePath}
             showHiddenItems={showHiddenItems}
-            isContentTree={isContentTree}
+            disabledAncestorPaths={disabledAncestorPaths}
           />
         ))}
     </>
@@ -172,12 +168,16 @@ export function RiftContentTree({
 
     const contentLockedPaths = new Map<string, Set<string>>();
     const contentDefaultPaths = new Map<string, Set<string>>();
+    // All ancestor paths (including site root) that should have disabled checkboxes
+    const contentAncestorPaths = new Set<string>();
 
     let contentAccum = '/sitecore/content';
+    contentAncestorPaths.add(contentAccum);
     for (const seg of segments) {
       const childPath = `${contentAccum}/${seg}`;
       contentLockedPaths.set(contentAccum, new Set([childPath]));
       contentAccum = childPath;
+      contentAncestorPaths.add(contentAccum);
     }
     contentDefaultPaths.set(rootPath, new Set([
       `${rootPath}/Home`,
@@ -200,6 +200,7 @@ export function RiftContentTree({
       relativePath,
       contentLockedPaths,
       contentDefaultPaths,
+      contentAncestorPaths,
       mediaDefaultPaths,
       mediaFinalPath: mediaAccum,
     };
@@ -382,6 +383,7 @@ export function RiftContentTree({
     onExpand: handleExpand,
     onTogglePath,
     showHiddenItems,
+    disabledAncestorPaths: pathInfo?.contentAncestorPaths,
   };
 
   // Render a branch of the tree with per-level filtering
@@ -390,8 +392,8 @@ export function RiftContentTree({
     const isLoadingNode = loadingNodes.has(node.itemId);
     const isSelected = selectedPathSet.has(node.path);
     const isInherited = inheritedPaths.has(node.path);
-    // Content tree ancestors (rendered by renderFilteredBranch) are disabled — users select children instead
-    const isAncestorDisabled = !isMedia;
+    // Content tree ancestors (up to and including site root) have disabled checkboxes
+    const isAncestorDisabled = !isMedia && pathInfo?.contentAncestorPaths.has(node.path);
     let children = childrenCache.get(node.path) ?? [];
 
     const visiblePaths = getVisibleChildPaths(node, isMedia);
@@ -456,7 +458,6 @@ export function RiftContentTree({
                 node={child}
                 depth={depth + 1}
                 {...baseTreeRowProps}
-                isContentTree={!isMedia}
               />
             );
           })}

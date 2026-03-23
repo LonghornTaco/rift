@@ -957,7 +957,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         </AlertDialog>
 
         {/* IAR dangerous path warning — first warning */}
-        <AlertDialog open={!!pendingDangerousNode && !showIarSecondWarning} onOpenChange={(open) => { if (!open) setPendingDangerousNode(null); }}>
+        <AlertDialog open={!!pendingDangerousNode && !showIarSecondWarning}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Warning: IAR-Managed Content</AlertDialogTitle>
