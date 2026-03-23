@@ -15,6 +15,7 @@ interface RiftProgressOverlayProps {
   isActive: boolean;
   messages: MigrationMessage[];
   onClose: () => void;
+  onCancel?: () => void;
   parallelPaths?: boolean;
 }
 
@@ -32,7 +33,7 @@ function formatElapsed(ms: number): string {
   return `${seconds}s`;
 }
 
-export function RiftProgressOverlay({ isActive, messages, onClose, parallelPaths }: RiftProgressOverlayProps) {
+export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, parallelPaths }: RiftProgressOverlayProps) {
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [copyLabel, setCopyLabel] = useState('Copy Log');
@@ -166,6 +167,16 @@ export function RiftProgressOverlay({ isActive, messages, onClose, parallelPaths
             : 'Migration in progress...'}
         </span>
         <div className="flex items-center gap-1">
+          {isActive && onCancel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              colorScheme="danger"
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          )}
           {isFinished && messages.length > 0 && (
             <Button
               variant="ghost"

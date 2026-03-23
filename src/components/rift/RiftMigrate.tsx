@@ -28,6 +28,16 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 interface RiftMigrateProps {
   loadedPreset: RiftPreset | null;
@@ -62,6 +72,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [loadedTreeNodes, setLoadedTreeNodes] = useState<Map<string, TreeNode[]>>(new Map());
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
@@ -464,6 +476,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             setMigrationMessages([]);
             setMigrationComplete(false);
             migrationStartRef.current = Date.now();
+            const abortController = new AbortController();
+            abortControllerRef.current = abortController;
 
             const localMessages: MigrationMessage[] = [];
             const addMsg = (msg: MigrationMessage) => {
@@ -504,6 +518,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 const response = await fetch('/api/rift/migrate', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
+                  signal: abortController.signal,
                   body: JSON.stringify({
                     source: {
                       cmUrl: src.cmUrl,
@@ -606,9 +621,14 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                     : `Migration complete: ${totalSucceeded} migrated (${totalCreated} created, ${totalUpdated} updated), ${totalFailed} failed.`,
               });
             } catch (err) {
-              console.error('[Rift] Migration failed:', err);
-              addMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+              if (err instanceof DOMException && err.name === 'AbortError') {
+                addMsg({ type: 'warning', message: 'Migration cancelled by user. Content already pushed to the target has not been rolled back.' });
+              } else {
+                console.error('[Rift] Migration failed:', err);
+                addMsg({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+              }
             } finally {
+              abortControllerRef.current = null;
               setMigrationComplete(true);
               setIsMigrating(false);
 
@@ -763,12 +783,36 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             isActive={isMigrating}
             messages={migrationMessages}
             parallelPaths={parallelPaths}
+            onCancel={() => setShowCancelConfirm(true)}
             onClose={() => {
               setMigrationComplete(false);
               setMigrationMessages([]);
             }}
           />
         )}
+
+        {/* Cancel confirmation */}
+        <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel Migration</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to cancel this migration? Content that has already been pushed to the target environment will not be rolled back. This may leave the target in a partially updated state.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Continue Migration</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  abortControllerRef.current?.abort();
+                }}
+              >
+                Cancel Migration
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
