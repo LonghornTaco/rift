@@ -265,8 +265,11 @@ export function RiftContentTree({
               console.warn(`[Rift] Media path segment "${seg}" not found under ${currentPath}`);
               break;
             }
-            expandIds.add(match.itemId);
             currentPath = match.path;
+            // Expand intermediate nodes but not the final media folder
+            if (seg !== mediaSegments[mediaSegments.length - 1]) {
+              expandIds.add(match.itemId);
+            }
           }
 
           if (cancelled) return;
