@@ -295,24 +295,60 @@ async function processAndPushItems(
         logLevel
       );
 
-      for (const r of results) {
+      // Collect failed CREATEs that need retry as UPDATE
+      const retryItems: Record<string, unknown>[] = [];
+
+      for (let ri = 0; ri < results.length; ri++) {
+        const r = results[ri];
         if (r.success) {
           succeeded++;
-          // Only stream per-item messages when user selected DEBUG
           if (logLevel === 'DEBUG') {
             for (const m of r.messages ?? []) {
               send({ type: 'debug', message: `${r.name}: ${m.message}`, logLevel: m.logLevel });
             }
           }
         } else {
-          failed++;
-          const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? 'Unknown error';
-          send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg.substring(0, 200)}` });
+          const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? '';
+          // If CREATE failed because item already exists, retry as UPDATE
+          if (commands[ri]?.isCreate && errorMsg.includes('already existed')) {
+            retryItems.push(batch[ri]);
+          } else {
+            failed++;
+            send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg.substring(0, 200)}` });
+          }
         }
       }
 
-      created += batchCreates;
-      updated += batchUpdates;
+      // Retry failed CREATEs as UPDATEs
+      if (retryItems.length > 0) {
+        send({ type: 'status', message: `${label}: retrying ${retryItems.length} items as updates...` });
+        const retryExistingIds = new Set(retryItems.map((item) => item.id as string));
+        const retryCommands = retryItems.map((item) => buildCommand(item, retryExistingIds));
+        try {
+          const retryResults = await executeCommands(
+            targetCmUrl,
+            targetToken,
+            retryCommands.map(({ isCreate, ...cmd }) => cmd),
+            logLevel
+          );
+          for (const r of retryResults) {
+            if (r.success) {
+              succeeded++;
+            } else {
+              failed++;
+              const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? 'Unknown error';
+              send({ type: 'warning', message: `Failed (retry): ${r.name}: ${errorMsg.substring(0, 200)}` });
+            }
+          }
+        } catch (retryErr) {
+          failed += retryItems.length;
+          const detail = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          send({ type: 'error', message: `${label} retry failed: ${detail}` });
+        }
+      }
+
+      created += batchCreates - retryItems.length;
+      updated += batchUpdates + retryItems.length;
     } catch (err) {
       failed += batch.length;
       const detail = err instanceof Error ? err.message : String(err);
