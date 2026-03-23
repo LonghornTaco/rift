@@ -329,12 +329,22 @@ export function RiftContentTree({
       if (locked) return locked;
 
       if (!showHiddenItems) {
-        return pathInfo.contentDefaultPaths.get(node.path);
+        const defaults = pathInfo.contentDefaultPaths.get(node.path);
+        if (defaults) {
+          // Also show any selected paths that are direct children of this node
+          const merged = new Set(defaults);
+          for (const sp of selectedPaths) {
+            if (sp.itemPath.startsWith(node.path + '/') && !sp.itemPath.slice(node.path.length + 1).includes('/')) {
+              merged.add(sp.itemPath);
+            }
+          }
+          return merged;
+        }
       }
 
       return undefined;
     },
-    [pathInfo, showHiddenItems]
+    [pathInfo, showHiddenItems, selectedPaths]
   );
 
   const handleExpand = useCallback(

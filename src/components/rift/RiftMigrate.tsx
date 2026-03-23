@@ -77,6 +77,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [pendingDangerousNode, setPendingDangerousNode] = useState<TreeNode | null>(null);
   const [showIarSecondWarning, setShowIarSecondWarning] = useState(false);
   const [showIarMigrationWarning, setShowIarMigrationWarning] = useState(false);
+  const [showIarPresetWarning, setShowIarPresetWarning] = useState(false);
+  const [iarPresetPaths, setIarPresetPaths] = useState<string[]>([]);
   const [pendingMediaLibraryNode, setPendingMediaLibraryNode] = useState<TreeNode | null>(null);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
@@ -303,6 +305,14 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     if (!loadedPreset) return;
     if (loadedPreset.paths) {
       setSelectedPaths(loadedPreset.paths);
+      // Check if preset contains IAR-dangerous paths and warn
+      const dangerousPaths = loadedPreset.paths
+        .filter((p) => isDangerousPath(p.itemPath))
+        .map((p) => p.itemPath);
+      if (dangerousPaths.length > 0) {
+        setIarPresetPaths(dangerousPaths);
+        setShowIarPresetWarning(true);
+      }
     }
     if (loadedPreset.sourceEnvId) {
       handleEnvChange(loadedPreset.sourceEnvId);
@@ -927,6 +937,23 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 }}
               >
                 Select All Media
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* IAR warning when preset is loaded with dangerous paths */}
+        <AlertDialog open={showIarPresetWarning} onOpenChange={setShowIarPresetWarning}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Preset Contains IAR-Managed Paths</AlertDialogTitle>
+              <AlertDialogDescription>
+                This preset includes paths that are typically managed by Sitecore&apos;s Items as Resource (IAR) files: <strong>{iarPresetPaths.map(p => p.split('/').pop()).join(', ')}</strong>. Migrating these items will create database versions that override the IAR-deployed items on the target. You can remove them from the selected paths before starting the migration.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction onClick={() => setShowIarPresetWarning(false)}>
+                OK
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
