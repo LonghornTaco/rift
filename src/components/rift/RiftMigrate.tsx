@@ -27,6 +27,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 interface RiftMigrateProps {
   loadedPreset: RiftPreset | null;
@@ -36,12 +37,14 @@ interface RiftMigrateProps {
 export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [batchSize, setBatchSize] = useState(DEFAULT_SETTINGS.batchSize);
   const [logLevel, setLogLevel] = useState<MigrationLogLevel>(DEFAULT_SETTINGS.logLevel);
+  const [parallelPaths, setParallelPaths] = useState(DEFAULT_SETTINGS.parallelPaths);
 
   // Load persisted settings
   useEffect(() => {
     const s = getSettings();
     setBatchSize(s.batchSize);
     setLogLevel(s.logLevel);
+    setParallelPaths(s.parallelPaths ?? false);
   }, []);
   const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
   const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
@@ -426,6 +429,21 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center justify-between pt-2 border-t border-border">
+              <div>
+                <Label className="text-xs font-semibold text-foreground">Migrate Paths in Parallel</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Process all selected paths simultaneously instead of one at a time. Faster, but uses more resources.
+                </p>
+              </div>
+              <Switch
+                checked={parallelPaths}
+                onCheckedChange={(checked) => {
+                  setParallelPaths(checked);
+                  saveSettings({ ...getSettings(), parallelPaths: checked });
+                }}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button onClick={() => setShowSettingsModal(false)}>Done</Button>
@@ -460,24 +478,35 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
               console.log('[Rift] Starting migration with', selectedPaths.length, 'paths...');
 
-              // Send one request per path so each gets its own timeout budget
-              for (let pi = 0; pi < selectedPaths.length; pi++) {
-                const p = selectedPaths[pi];
-                addMsg({ type: 'status', message: `[${pi + 1}/${selectedPaths.length}] Starting: ${p.itemPath} (${p.scope})...` });
+              // Sort: media first, then content
+              const sortedPaths = [...selectedPaths].sort((a, b) => {
+                const aMedia = a.itemPath.toLowerCase().startsWith('/sitecore/media library');
+                const bMedia = b.itemPath.toLowerCase().startsWith('/sitecore/media library');
+                if (aMedia && !bMedia) return -1;
+                if (!aMedia && bMedia) return 1;
+                return 0;
+              });
+
+              const src = sourceEnv;
+              const tgt = targetEnv;
+
+              // Migrate a single path via streaming API
+              async function migratePath(p: MigrationPath, index: number, suppressAuth: boolean) {
+                addMsg({ type: 'status', message: `[${index + 1}/${sortedPaths.length}] Starting: ${p.itemPath} (${p.scope})...` });
 
                 const response = await fetch('/api/rift/migrate', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     source: {
-                      cmUrl: sourceEnv.cmUrl,
-                      clientId: sourceEnv.clientId,
-                      clientSecret: sourceEnv.clientSecret,
+                      cmUrl: src.cmUrl,
+                      clientId: src.clientId,
+                      clientSecret: src.clientSecret,
                     },
                     target: {
-                      cmUrl: targetEnv.cmUrl,
-                      clientId: targetEnv.clientId,
-                      clientSecret: targetEnv.clientSecret,
+                      cmUrl: tgt.cmUrl,
+                      clientId: tgt.clientId,
+                      clientSecret: tgt.clientSecret,
                     },
                     paths: [{ itemPath: p.itemPath, scope: p.scope }],
                     batchSize,
@@ -488,10 +517,9 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 if (!response.ok) {
                   const errData = await response.json().catch(() => ({}));
                   addMsg({ type: 'error', message: `${p.itemPath}: ${errData.error || `Request failed: ${response.status}`}` });
-                  continue;
+                  return;
                 }
 
-                // Read the NDJSON stream for this path
                 const reader = response.body!.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
@@ -508,8 +536,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                       try {
                         const msg = JSON.parse(line) as MigrationMessage;
                         if (msg.type === 'complete') gotComplete = true;
-                        // Don't show per-path auth messages after the first path
-                        if (pi > 0 && msg.type === 'status' && (msg.message as string)?.startsWith('Authenticat')) continue;
+                        if (suppressAuth && msg.type === 'status' && (msg.message as string)?.startsWith('Authenticat')) continue;
                         addMsg(msg);
                       } catch (parseErr) {
                         console.warn('[Rift] Failed to parse stream line:', line, parseErr);
@@ -533,6 +560,18 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                     type: 'error',
                     message: `${p.itemPath}: Connection lost — the server stopped responding. This usually means the request timed out. Try reducing the scope or batch size.`,
                   });
+                }
+              }
+
+              if (parallelPaths && sortedPaths.length > 1) {
+                // Run all paths concurrently
+                await Promise.all(
+                  sortedPaths.map((p, i) => migratePath(p, i, i > 0))
+                );
+              } else {
+                // Run paths sequentially
+                for (let pi = 0; pi < sortedPaths.length; pi++) {
+                  await migratePath(sortedPaths[pi], pi, pi > 0);
                 }
               }
 

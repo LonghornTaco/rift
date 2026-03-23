@@ -43,11 +43,13 @@ export type MigrationLogLevel = 'DEBUG' | 'INFORMATION' | 'WARNING' | 'ERROR';
 export interface RiftSettings {
   batchSize: number;
   logLevel: MigrationLogLevel;
+  parallelPaths: boolean;
 }
 
 export const DEFAULT_SETTINGS: RiftSettings = {
   batchSize: 200,
   logLevel: 'INFORMATION',
+  parallelPaths: false,
 };
 
 export interface MigrationHistoryEntry {
