@@ -492,7 +492,14 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
               // Migrate a single path via streaming API
               async function migratePath(p: MigrationPath, index: number, suppressAuth: boolean) {
-                addMsg({ type: 'status', message: `[${index + 1}/${sortedPaths.length}] Starting: ${p.itemPath} (${p.scope})...` });
+                const isMedia = p.itemPath.toLowerCase().startsWith('/sitecore/media library');
+                const pathLabel = (isMedia ? 'Media: ' : 'Content: ') + p.itemPath.split('/').pop();
+                const tagMsg = (msg: MigrationMessage): MigrationMessage => ({
+                  ...msg,
+                  pathIndex: index,
+                  pathLabel,
+                });
+                addMsg(tagMsg({ type: 'status', message: `[${index + 1}/${sortedPaths.length}] Starting: ${p.itemPath} (${p.scope})...` }));
 
                 const response = await fetch('/api/rift/migrate', {
                   method: 'POST',
@@ -516,7 +523,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
                 if (!response.ok) {
                   const errData = await response.json().catch(() => ({}));
-                  addMsg({ type: 'error', message: `${p.itemPath}: ${errData.error || `Request failed: ${response.status}`}` });
+                  addMsg(tagMsg({ type: 'error', message: `${p.itemPath}: ${errData.error || `Request failed: ${response.status}`}` }));
                   return;
                 }
 
@@ -537,7 +544,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                         const msg = JSON.parse(line) as MigrationMessage;
                         if (msg.type === 'complete') gotComplete = true;
                         if (suppressAuth && msg.type === 'status' && (msg.message as string)?.startsWith('Authenticat')) continue;
-                        addMsg(msg);
+                        addMsg(tagMsg(msg));
                       } catch (parseErr) {
                         console.warn('[Rift] Failed to parse stream line:', line, parseErr);
                       }
@@ -549,17 +556,17 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                   try {
                     const msg = JSON.parse(buffer) as MigrationMessage;
                     if (msg.type === 'complete') gotComplete = true;
-                    addMsg(msg);
+                    addMsg(tagMsg(msg));
                   } catch {
                     console.warn('[Rift] Failed to parse final buffer:', buffer);
                   }
                 }
 
                 if (!gotComplete) {
-                  addMsg({
+                  addMsg(tagMsg({
                     type: 'error',
                     message: `${p.itemPath}: Connection lost — the server stopped responding. This usually means the request timed out. Try reducing the scope or batch size.`,
-                  });
+                  }));
                 }
               }
 

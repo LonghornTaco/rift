@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
@@ -89,6 +89,48 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
   const totalPulled = pullCompleteMessages.reduce((sum, m) => sum + ((m.itemCount as number) || 0), 0);
 
   const displayElapsed = finalElapsed ?? elapsed;
+
+  // Per-path status tracking
+  interface PathStatus {
+    label: string;
+    pulled: number;
+    pushed: number;
+    total: number;
+    complete: boolean;
+    hasError: boolean;
+    lastStatus: string;
+  }
+
+  const pathStatuses = useMemo(() => {
+    const map = new Map<number, PathStatus>();
+    for (const msg of messages) {
+      const idx = msg.pathIndex as number | undefined;
+      const label = msg.pathLabel as string | undefined;
+      if (idx == null || !label) continue;
+
+      if (!map.has(idx)) {
+        map.set(idx, { label, pulled: 0, pushed: 0, total: 0, complete: false, hasError: false, lastStatus: '' });
+      }
+      const s = map.get(idx)!;
+
+      if (msg.type === 'pull-complete') {
+        s.pulled += (msg.itemCount as number) || 0;
+      } else if (msg.type === 'push-batch') {
+        s.pushed = (msg.succeeded as number) || 0;
+        s.total = (msg.total as number) || 0;
+      } else if (msg.type === 'complete') {
+        s.complete = true;
+        s.pushed = (msg.succeeded as number) || 0;
+        s.total = (msg.totalItems as number) || 0;
+      } else if (msg.type === 'error') {
+        s.hasError = true;
+      }
+      if (msg.type === 'status' && msg.message) {
+        s.lastStatus = msg.message as string;
+      }
+    }
+    return Array.from(map.values());
+  }, [messages]);
 
   const getMessageColor = (type: string) => {
     switch (type) {
@@ -186,29 +228,46 @@ export function RiftProgressOverlay({ isActive, messages, onClose }: RiftProgres
           <span className="text-sm font-medium text-foreground">
             {isActive ? 'Migration in progress' : 'Migration finished'}
           </span>
-          <div className="flex items-center gap-3">
-            {totalPulled > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {totalPulled} items pulled
-                {pushedItems != null && ` / ${pushedItems} pushed`}
-                {totalItems != null && ` of ${totalItems}`}
-              </span>
-            )}
-            <span className="text-xs font-mono text-muted-foreground tabular-nums">
-              {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
-            </span>
-          </div>
+          <span className="text-xs font-mono text-muted-foreground tabular-nums">
+            {isFinished ? `Total: ${formatElapsed(displayElapsed)}` : formatElapsed(displayElapsed)}
+          </span>
         </div>
 
-        {isActive && (
-          <Progress
-            value={progressPercent ?? undefined}
-            isIndeterminate={progressPercent == null}
-            className="mb-2"
-          />
+        {pathStatuses.length > 1 ? (
+          // Per-path compact status rows
+          <div className="space-y-1.5 mb-2">
+            {pathStatuses.map((ps, i) => {
+              const pct = ps.total > 0 ? Math.round((ps.pushed / ps.total) * 100) : (ps.complete ? 100 : 0);
+              return (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="w-32 truncate font-medium text-foreground shrink-0" title={ps.label}>{ps.label}</span>
+                  <div className="flex-1 min-w-0">
+                    <Progress value={ps.complete ? 100 : pct} isIndeterminate={!ps.complete && ps.total === 0 && !ps.hasError} className="h-1.5" />
+                  </div>
+                  <span className="w-28 text-right text-muted-foreground shrink-0 tabular-nums">
+                    {ps.hasError && !ps.complete && <span className="text-destructive">error</span>}
+                    {ps.complete && <span className="text-green-600 dark:text-green-400">{ps.pushed} items {'\u2713'}</span>}
+                    {!ps.complete && !ps.hasError && ps.total > 0 && <span>{ps.pushed}/{ps.total}</span>}
+                    {!ps.complete && !ps.hasError && ps.total === 0 && ps.pulled > 0 && <span>{ps.pulled} pulled</span>}
+                    {!ps.complete && !ps.hasError && ps.total === 0 && ps.pulled === 0 && <span>starting...</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          // Single path: original progress bar
+          <>
+            {isActive && (
+              <Progress
+                value={progressPercent ?? undefined}
+                isIndeterminate={progressPercent == null}
+                className="mb-2"
+              />
+            )}
+            <div className="text-xs text-muted-foreground truncate">{statusText}</div>
+          </>
         )}
-
-        <div className="text-xs text-muted-foreground truncate">{statusText}</div>
       </div>
 
       {/* Collapsible details log */}
