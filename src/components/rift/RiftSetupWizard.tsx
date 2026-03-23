@@ -9,6 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Card } from '@/components/ui/card';
 import {
   Select,
@@ -50,6 +60,7 @@ type CredentialPhase = 'credentials' | 'select';
 
 export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   // Credential state (shared across steps)
   const [clientId, setClientId] = useState('');
@@ -620,13 +631,31 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         {/* Skip link */}
         <div className="text-center mt-5">
           <span
-            onClick={onComplete}
-            className="text-xs text-muted-foreground cursor-pointer"
+            onClick={() => setShowSkipConfirm(true)}
+            className="text-xs text-muted-foreground cursor-pointer hover:underline"
           >
             {isStep1 ? 'Skip Setup' : 'Skip'}
           </span>
         </div>
       </Card>
+
+      {/* Skip confirmation */}
+      <AlertDialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Skip Setup?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to skip the setup wizard? You can always add environments manually from the Environments tab.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction onClick={onComplete}>
+              Skip
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
