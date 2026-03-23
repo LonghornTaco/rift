@@ -6,6 +6,16 @@ import { getPresets, getEnvironments, savePreset, deletePreset, updatePresetLast
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 interface RiftPresetsProps {
   onLoadPreset: (preset: RiftPreset) => void;
@@ -28,6 +38,7 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
   const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const refreshPresets = () => {
     setPresets(getPresets());
@@ -56,8 +67,10 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
     refreshPresets();
   };
 
-  const handleDelete = (id: string) => {
-    deletePreset(id);
+  const confirmDelete = () => {
+    if (!deleteConfirmId) return;
+    deletePreset(deleteConfirmId);
+    setDeleteConfirmId(null);
     refreshPresets();
   };
 
@@ -176,7 +189,7 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
                   size="sm"
                   variant="outline"
                   colorScheme="danger"
-                  onClick={() => handleDelete(preset.id)}
+                  onClick={() => setDeleteConfirmId(preset.id)}
                 >
                   Delete
                 </Button>
@@ -186,6 +199,24 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Preset</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this preset? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
