@@ -5,8 +5,8 @@ import { TreeNode, MigrationPath } from '@/lib/rift/types';
 import { fetchTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 
-// Items under /sitecore/content that are typically IAR-managed and should not be migrated
-const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
+// Items under /sitecore/content that are typically IAR-managed (used for visual indicator only)
+const IAR_WARN_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {
@@ -43,7 +43,7 @@ function TreeNodeRow({
   const isLoading = loadingNodes.has(node.itemId);
   const isSelected = selectedPathSet.has(node.path);
   const isInherited = inheritedPaths.has(node.path);
-  const isIarDisabled = isContentTree && IAR_DISABLED_NAMES.has(node.name.toLowerCase());
+  const isIarWarn = isContentTree && IAR_WARN_NAMES.has(node.name.toLowerCase());
   let children = childrenCache.get(node.path) ?? [];
 
   // Filter children based on visible paths (when hidden items are off)
@@ -78,16 +78,15 @@ function TreeNodeRow({
         <Checkbox
           checked={isSelected || isInherited}
           onCheckedChange={() => onTogglePath(node)}
-          disabled={isInherited || isIarDisabled}
+          disabled={isInherited}
           className={cn(
             'shrink-0',
-            (isInherited || isIarDisabled) && 'opacity-50 pointer-events-none'
+            isInherited && 'opacity-50 pointer-events-none'
           )}
-          title={isIarDisabled ? 'This item is typically managed by IAR files and should not be migrated' : undefined}
         />
 
         {/* Icon */}
-        <span className={cn("text-muted-foreground shrink-0", isIarDisabled && 'opacity-40')}>
+        <span className="text-muted-foreground shrink-0">
           {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
         </span>
 
@@ -96,14 +95,12 @@ function TreeNodeRow({
           className={cn(
             isSelected ? 'font-bold' : 'font-normal',
             isInherited ? 'text-muted-foreground' : 'text-foreground',
-            isIarDisabled && 'text-muted-foreground/40 line-through'
           )}
-          title={isIarDisabled ? 'IAR-managed — not available for migration' : undefined}
         >
           {node.name}
         </span>
-        {isIarDisabled && (
-          <span className="text-[9px] text-muted-foreground/40 ml-1">IAR</span>
+        {isIarWarn && (
+          <span className="text-[9px] text-amber-500/70 ml-1">IAR</span>
         )}
       </div>
 
@@ -393,7 +390,8 @@ export function RiftContentTree({
     const isLoadingNode = loadingNodes.has(node.itemId);
     const isSelected = selectedPathSet.has(node.path);
     const isInherited = inheritedPaths.has(node.path);
-    const isIarDisabled = !isMedia && IAR_DISABLED_NAMES.has(node.name.toLowerCase());
+    // Content tree ancestors (rendered by renderFilteredBranch) are disabled — users select children instead
+    const isAncestorDisabled = !isMedia;
     let children = childrenCache.get(node.path) ?? [];
 
     const visiblePaths = getVisibleChildPaths(node, isMedia);
@@ -425,31 +423,25 @@ export function RiftContentTree({
           <Checkbox
             checked={isSelected || isInherited}
             onCheckedChange={() => onTogglePath(node)}
-            disabled={isInherited || isIarDisabled}
+            disabled={isInherited || isAncestorDisabled}
             className={cn(
               'shrink-0',
-              (isInherited || isIarDisabled) && 'opacity-50 pointer-events-none'
+              (isInherited || isAncestorDisabled) && 'opacity-50 pointer-events-none'
             )}
-            title={isIarDisabled ? 'This item is typically managed by IAR files and should not be migrated' : undefined}
           />
 
-          <span className={cn("text-muted-foreground shrink-0", isIarDisabled && 'opacity-40')}>
+          <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
             {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
           </span>
 
           <span
             className={cn(
               isSelected ? 'font-bold' : 'font-normal',
-              isInherited ? 'text-muted-foreground' : 'text-foreground',
-              isIarDisabled && 'text-muted-foreground/40 line-through'
+              (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
             )}
-            title={isIarDisabled ? 'IAR-managed — not available for migration' : undefined}
           >
             {node.name}
           </span>
-          {isIarDisabled && (
-            <span className="text-[9px] text-muted-foreground/40 ml-1">IAR</span>
-          )}
         </div>
 
         {isExpanded &&

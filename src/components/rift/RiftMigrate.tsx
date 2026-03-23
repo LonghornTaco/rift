@@ -100,8 +100,24 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
   const isDangerousPath = useCallback((path: string): boolean => {
     if (!path.toLowerCase().startsWith('/sitecore/content/')) return false;
+    const segments = path.toLowerCase().split('/').slice(3); // after /sitecore/content/
+    return segments.some(seg => IAR_DANGEROUS_NAMES.has(seg));
+  }, []);
+
+  // Returns the IAR segment name if the path is directly an IAR item (last segment matches)
+  const isDirectIarItem = useCallback((path: string): boolean => {
     const lastSegment = path.split('/').pop()?.toLowerCase() ?? '';
     return IAR_DANGEROUS_NAMES.has(lastSegment);
+  }, []);
+
+  // Returns the IAR ancestor name if the path is under an IAR item (not the IAR item itself)
+  const getIarAncestorName = useCallback((path: string): string | null => {
+    if (!path.toLowerCase().startsWith('/sitecore/content/')) return null;
+    const segments = path.split('/').slice(3); // after /sitecore/content/
+    for (const seg of segments.slice(0, -1)) { // exclude last segment
+      if (IAR_DANGEROUS_NAMES.has(seg.toLowerCase())) return seg;
+    }
+    return null;
   }, []);
 
   const isAncestorOfDangerousPaths = useCallback((path: string): string[] => {
@@ -116,8 +132,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     const found: string[] = [];
     for (const sp of selectedPaths) {
       if (!sp.itemPath.toLowerCase().startsWith('/sitecore/content/')) continue;
-      const lastSegment = sp.itemPath.split('/').pop()?.toLowerCase() ?? '';
-      if (IAR_DANGEROUS_NAMES.has(lastSegment)) {
+      // Check if the path itself is or is under an IAR item
+      if (isDangerousPath(sp.itemPath)) {
         found.push(sp.itemPath);
         continue;
       }
@@ -132,7 +148,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       }
     }
     return found;
-  }, [selectedPaths, loadedTreeNodes]);
+  }, [selectedPaths, loadedTreeNodes, isDangerousPath]);
 
   const addPathToSelection = useCallback((node: TreeNode) => {
     setSelectedPaths((prev) => {
@@ -880,7 +896,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogFooter>
               <AlertDialogCancel>Continue Migration</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
+                className="bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
                 onClick={() => {
                   abortControllerRef.current?.abort();
                 }}
@@ -928,7 +944,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
+                className="bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
                 onClick={() => {
                   setShowIarMigrationWarning(false);
                   setShowConfirmDialog(true);
@@ -946,9 +962,13 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogHeader>
               <AlertDialogTitle>Warning: IAR-Managed Content</AlertDialogTitle>
               <AlertDialogDescription>
-                {pendingDangerousNode && isDangerousPath(pendingDangerousNode.path) ? (
+                {pendingDangerousNode && isDirectIarItem(pendingDangerousNode.path) ? (
                   <>
                     <strong>{pendingDangerousNode.path.split('/').pop()}</strong> typically contains items managed by Sitecore&apos;s Items as Resource (IAR) files.
+                  </>
+                ) : pendingDangerousNode && getIarAncestorName(pendingDangerousNode.path) ? (
+                  <>
+                    This item is located under <strong>{getIarAncestorName(pendingDangerousNode.path)}</strong>, which is typically managed by Sitecore&apos;s Items as Resource (IAR) files.
                   </>
                 ) : (
                   <>
@@ -961,7 +981,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setPendingDangerousNode(null)}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
+                className="bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
                 onClick={() => setShowIarSecondWarning(true)}
               >
                 I Understand the Risk
@@ -984,7 +1004,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-white hover:bg-destructive/90"
+                className="bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
                 onClick={() => {
                   if (pendingDangerousNode) {
                     addPathToSelection(pendingDangerousNode);
