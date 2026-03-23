@@ -76,6 +76,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [pendingDangerousNode, setPendingDangerousNode] = useState<TreeNode | null>(null);
   const [showIarSecondWarning, setShowIarSecondWarning] = useState(false);
+  const [showIarMigrationWarning, setShowIarMigrationWarning] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
@@ -94,7 +95,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   }, []);
 
   // Paths that are typically managed by IAR files and should not be migrated
-  const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
+  const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary']);
 
   const isDangerousPath = useCallback((path: string): boolean => {
     if (!path.toLowerCase().startsWith('/sitecore/content/')) return false;
@@ -109,6 +110,28 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       .filter((c) => IAR_DANGEROUS_NAMES.has(c.name.toLowerCase()))
       .map((c) => c.name);
   }, [loadedTreeNodes]);
+
+  const selectedPathsContainIarItems = useCallback((): string[] => {
+    const found: string[] = [];
+    for (const sp of selectedPaths) {
+      if (!sp.itemPath.toLowerCase().startsWith('/sitecore/content/')) continue;
+      const lastSegment = sp.itemPath.split('/').pop()?.toLowerCase() ?? '';
+      if (IAR_DANGEROUS_NAMES.has(lastSegment)) {
+        found.push(sp.itemPath);
+        continue;
+      }
+      // Check if descendants scope would include dangerous children
+      if (sp.scope === 'ItemAndDescendants' || sp.scope === 'ItemAndChildren') {
+        const children = loadedTreeNodes.get(sp.itemPath) ?? [];
+        for (const c of children) {
+          if (IAR_DANGEROUS_NAMES.has(c.name.toLowerCase())) {
+            found.push(c.path);
+          }
+        }
+      }
+    }
+    return found;
+  }, [selectedPaths, loadedTreeNodes]);
 
   const addPathToSelection = useCallback((node: TreeNode) => {
     setSelectedPaths((prev) => {
@@ -411,7 +434,12 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             disabled={!canStartMigration}
             onClick={() => {
               if (canStartMigration) {
-                setShowConfirmDialog(true);
+                const iarPaths = selectedPathsContainIarItems();
+                if (iarPaths.length > 0) {
+                  setShowIarMigrationWarning(true);
+                } else {
+                  setShowConfirmDialog(true);
+                }
               }
             }}
           >
@@ -845,12 +873,36 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogFooter>
               <AlertDialogCancel>Continue Migration</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-destructive text-white hover:bg-destructive/90"
                 onClick={() => {
                   abortControllerRef.current?.abort();
                 }}
               >
                 Cancel Migration
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* IAR warning at migration start (e.g., loaded from preset) */}
+        <AlertDialog open={showIarMigrationWarning} onOpenChange={setShowIarMigrationWarning}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Warning: IAR-Managed Content Detected</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your selected paths include items that are typically managed by Sitecore&apos;s Items as Resource (IAR) files: <strong>{selectedPathsContainIarItems().map(p => p.split('/').pop()).join(', ')}</strong>. Migrating these items will create database versions that override the IAR-deployed items on the target. This can cause unexpected behavior and is difficult to reverse.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-white hover:bg-destructive/90"
+                onClick={() => {
+                  setShowIarMigrationWarning(false);
+                  setShowConfirmDialog(true);
+                }}
+              >
+                Proceed Anyway
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -877,7 +929,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setPendingDangerousNode(null)}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-destructive text-white hover:bg-destructive/90"
                 onClick={() => setShowIarSecondWarning(true)}
               >
                 I Understand the Risk
@@ -900,7 +952,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                className="bg-destructive text-white hover:bg-destructive/90"
                 onClick={() => {
                   if (pendingDangerousNode) {
                     addPathToSelection(pendingDangerousNode);

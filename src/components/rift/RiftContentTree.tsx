@@ -6,7 +6,7 @@ import { fetchTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 
 // Items under /sitecore/content that are typically IAR-managed and should not be migrated
-const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
+const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary']);
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {
@@ -87,7 +87,7 @@ function TreeNodeRow({
         />
 
         {/* Icon */}
-        <span className="text-muted-foreground shrink-0">
+        <span className={cn("text-muted-foreground shrink-0", isIarDisabled && 'opacity-40')}>
           {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
         </span>
 
@@ -95,11 +95,16 @@ function TreeNodeRow({
         <span
           className={cn(
             isSelected ? 'font-bold' : 'font-normal',
-            isInherited ? 'text-muted-foreground' : 'text-foreground'
+            isInherited ? 'text-muted-foreground' : 'text-foreground',
+            isIarDisabled && 'text-muted-foreground/40 line-through'
           )}
+          title={isIarDisabled ? 'IAR-managed — not available for migration' : undefined}
         >
           {node.name}
         </span>
+        {isIarDisabled && (
+          <span className="text-[9px] text-muted-foreground/40 ml-1">IAR</span>
+        )}
       </div>
 
       {/* Children — pass visibleChildPaths only to this level, children render without it */}
@@ -428,18 +433,23 @@ export function RiftContentTree({
             title={isIarDisabled ? 'This item is typically managed by IAR files and should not be migrated' : undefined}
           />
 
-          <span className="text-muted-foreground shrink-0">
+          <span className={cn("text-muted-foreground shrink-0", isIarDisabled && 'opacity-40')}>
             {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
           </span>
 
           <span
             className={cn(
               isSelected ? 'font-bold' : 'font-normal',
-              isInherited ? 'text-muted-foreground' : 'text-foreground'
+              isInherited ? 'text-muted-foreground' : 'text-foreground',
+              isIarDisabled && 'text-muted-foreground/40 line-through'
             )}
+            title={isIarDisabled ? 'IAR-managed — not available for migration' : undefined}
           >
             {node.name}
           </span>
+          {isIarDisabled && (
+            <span className="text-[9px] text-muted-foreground/40 ml-1">IAR</span>
+          )}
         </div>
 
         {isExpanded &&
