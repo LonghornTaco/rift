@@ -193,34 +193,10 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
     setSavedClientSecret(clientSecret);
     setSavedProjectId(step1SelectedProjectId);
 
-    // Pre-fill step 2 with same credentials and auto-connect
+    // Pre-fill step 2 credentials with same values (user can uncheck to change)
     setStep2Phase('credentials');
     setClientId(clientId);
     setClientSecret(clientSecret);
-
-    // Pre-connect for step 2 using same token and projects
-    if (step1Token && step1Projects.length > 0) {
-      setStep2Token(step1Token);
-      setStep2Projects(step1Projects);
-      setStep2Phase('select');
-
-      // Pre-select same project and load its environments
-      if (step1SelectedProjectId) {
-        setStep2SelectedProjectId(step1SelectedProjectId);
-        // Load envs for step 2 using same token/project
-        setStep2LoadingEnvs(true);
-        fetchEnvironments(step1Token, step1SelectedProjectId)
-          .then((rawEnvs) => {
-            setStep2EnvOptions(parseEnvList(rawEnvs));
-          })
-          .catch((err) => {
-            console.error('[Rift] Failed to fetch environments for step 2:', err);
-          })
-          .finally(() => {
-            setStep2LoadingEnvs(false);
-          });
-      }
-    }
 
     setWizardStep(2);
   }
@@ -540,29 +516,66 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         {/* Step 2 content */}
         {!isStep1 && (
           <>
-            {step2Phase === 'credentials' &&
-              renderCredentialsForm(step2Connecting, step2ConnectError, handleStep2Connect)}
+            {step2Phase === 'credentials' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={clientId === savedClientId && clientSecret === savedClientSecret && !!savedClientId}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setClientId(savedClientId);
+                        setClientSecret(savedClientSecret);
+                      } else {
+                        setClientId('');
+                        setClientSecret('');
+                      }
+                    }}
+                    id="sameCredentials"
+                  />
+                  <Label htmlFor="sameCredentials" className="text-sm text-foreground">
+                    Same credentials as source environment
+                  </Label>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
+                  <Input
+                    type="text"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="Enter your Sitecore Client ID"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
+                  <Input
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder="Enter your Sitecore Client Secret"
+                  />
+                </div>
+
+                {step2ConnectError && (
+                  <div className="text-xs text-destructive px-3 py-2 bg-destructive/10 rounded border border-destructive/30">
+                    {step2ConnectError}
+                  </div>
+                )}
+
+                <div className="flex justify-end mt-2">
+                  <Button
+                    onClick={handleStep2Connect}
+                    disabled={step2Connecting || !clientId || !clientSecret}
+                  >
+                    {step2Connecting ? 'Connecting...' : 'Connect'}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {step2Phase === 'select' && (
               <>
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline cursor-pointer mb-2"
-                  onClick={() => {
-                    setStep2Phase('credentials');
-                    setClientId('');
-                    setClientSecret('');
-                    setStep2Token(null);
-                    setStep2Projects([]);
-                    setStep2EnvOptions([]);
-                    setStep2SelectedProjectId(null);
-                    setStep2SelectedEnvId(null);
-                    setStep2ConnectError(null);
-                  }}
-                >
-                  Use different credentials
-                </button>
-
                 {renderSelectForm(
                   step2Projects,
                   step2SelectedProjectId,
