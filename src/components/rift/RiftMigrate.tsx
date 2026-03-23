@@ -97,12 +97,13 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 
   const isDangerousPath = useCallback((path: string): boolean => {
+    if (!path.toLowerCase().startsWith('/sitecore/content/')) return false;
     const lastSegment = path.split('/').pop()?.toLowerCase() ?? '';
     return IAR_DANGEROUS_NAMES.has(lastSegment);
   }, []);
 
   const isAncestorOfDangerousPaths = useCallback((path: string): string[] => {
-    // Check if this path's known children include dangerous names
+    if (!path.toLowerCase().startsWith('/sitecore/content/')) return [];
     const children = loadedTreeNodes.get(path) ?? [];
     return children
       .filter((c) => IAR_DANGEROUS_NAMES.has(c.name.toLowerCase()))
