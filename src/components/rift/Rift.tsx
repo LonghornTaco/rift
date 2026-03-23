@@ -43,8 +43,8 @@ export function Rift() {
   const [activeView, setActiveView] = useState<RiftView>('migrate');
   const [migrateMode, setMigrateMode] = useState<'welcome' | 'workspace'>('welcome');
   const [loadedPreset, setLoadedPreset] = useState<RiftPreset | null>(null);
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
   const [showFeedback, setShowFeedback] = useState(false);
   const [feedbackCategory, setFeedbackCategory] = useState('general');
@@ -202,7 +202,6 @@ export function Rift() {
           <SidebarSeparator />
 
           <SidebarContent>
-            {/* Main nav */}
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -214,84 +213,71 @@ export function Rift() {
                   <span>Migrate</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  isActive={activeView === 'environments'}
+                  onClick={() => handleNavClick('environments')}
+                >
+                  <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDD17'}</span>
+                  <span>Environments</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  isActive={activeView === 'presets'}
+                  onClick={() => handleNavClick('presets')}
+                >
+                  <span className="w-5 text-center inline-block shrink-0">{'\u2605'}</span>
+                  <span>Presets</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
+                  isActive={activeView === 'history'}
+                  onClick={() => handleNavClick('history')}
+                >
+                  <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCCB'}</span>
+                  <span>History</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
 
-            {/* Settings section */}
-            <div className="mt-6">
-              <div
-                className="pl-5 pr-3 py-1.5 text-[10px] uppercase tracking-widest text-sidebar-foreground/40 cursor-pointer select-none flex items-center gap-1.5"
-                onClick={() => setSettingsExpanded(!settingsExpanded)}
-              >
-                <span className="text-[8px]">{settingsExpanded ? '\u25BC' : '\u25B6'}</span>
-                Settings
-              </div>
-
-              {settingsExpanded && (
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="sm"
-                      isActive={activeView === 'environments'}
-                      onClick={() => handleNavClick('environments')}
-                      className="pl-6"
-                    >
-                      <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDD17'}</span>
-                      <span>Environments</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="sm"
-                      isActive={activeView === 'presets'}
-                      onClick={() => handleNavClick('presets')}
-                      className="pl-6"
-                    >
-                      <span className="w-5 text-center inline-block shrink-0">{'\u2605'}</span>
-                      <span>Presets</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="sm"
-                      isActive={activeView === 'history'}
-                      onClick={() => handleNavClick('history')}
-                      className="pl-6"
-                    >
-                      <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCCB'}</span>
-                      <span>History</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="sm"
-                      isActive={activeView === 'display'}
-                      onClick={() => handleNavClick('display')}
-                      className="pl-6"
-                    >
-                      <span className="w-5 text-center inline-block shrink-0">{'\u2699'}</span>
-                      <span>Theme</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      size="sm"
-                      onClick={() => { setShowFeedback(true); setFeedbackText(''); setFeedbackCategory('general'); }}
-                      className="pl-6"
-                    >
-                      <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCE8'}</span>
-                      <span>Feedback</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              )}
+            <div className="mt-auto">
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="sm"
+                    isActive={activeView === 'display'}
+                    onClick={() => handleNavClick('display')}
+                  >
+                    <span className="w-5 text-center inline-block shrink-0">{'\uD83C\uDFA8'}</span>
+                    <span>Theme</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="sm"
+                    onClick={() => { setShowFeedback(true); setFeedbackText(''); setFeedbackCategory('general'); }}
+                  >
+                    <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCE8'}</span>
+                    <span>Feedback</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    size="sm"
+                    onClick={() => setShowAbout(true)}
+                  >
+                    <span className="w-5 text-center inline-block shrink-0">{'\u2139\uFE0F'}</span>
+                    <span>About Rift</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
             </div>
           </SidebarContent>
-
-          <SidebarFooter>
-            <div className="text-[10px] text-sidebar-foreground/40 px-2">
-              v1.0 &middot; No server storage
-            </div>
-          </SidebarFooter>
         </Sidebar>
 
         {/* Content Area */}
@@ -377,6 +363,28 @@ export function Rift() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* About dialog */}
+      <Dialog open={showAbout} onOpenChange={setShowAbout}>
+        <DialogContent size="sm">
+          <div className="flex flex-col items-center text-center py-4">
+            <img src="/rift-logo.svg" alt="Rift" className="w-16 h-16 mb-4" />
+            <div className="text-lg font-bold text-foreground">Rift</div>
+            <div className="text-sm text-muted-foreground mb-4">Content Migration for Sitecore XM Cloud</div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div><span className="font-medium text-foreground">Version:</span> 1.0.0</div>
+              <div><span className="font-medium text-foreground">Author:</span> Wilkerson Consulting</div>
+              <div><span className="font-medium text-foreground">Website:</span> <a href="https://longhorntaco.com/rift" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">longhorntaco.com/rift</a></div>
+            </div>
+            <div className="text-[10px] text-muted-foreground/60 mt-6">
+              &copy; 2026 Wilkerson Consulting. All rights reserved.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowAbout(false)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </SidebarProvider>
