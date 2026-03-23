@@ -6,7 +6,7 @@ import { fetchTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 
 // Items under /sitecore/content that are typically IAR-managed and should not be migrated
-const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary']);
+const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {

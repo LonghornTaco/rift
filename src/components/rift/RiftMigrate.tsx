@@ -95,7 +95,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   }, []);
 
   // Paths that are typically managed by IAR files and should not be migrated
-  const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary']);
+  const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 
   const isDangerousPath = useCallback((path: string): boolean => {
     if (!path.toLowerCase().startsWith('/sitecore/content/')) return false;
