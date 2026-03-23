@@ -74,6 +74,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [pendingDangerousNode, setPendingDangerousNode] = useState<TreeNode | null>(null);
+  const [showIarSecondWarning, setShowIarSecondWarning] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
@@ -91,17 +93,56 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     setLoadedTreeNodes((prev) => new Map(prev).set(parentPath, children));
   }, []);
 
+  // Paths that are typically managed by IAR files and should not be migrated
+  const IAR_DANGEROUS_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
+
+  const isDangerousPath = useCallback((path: string): boolean => {
+    const lastSegment = path.split('/').pop()?.toLowerCase() ?? '';
+    return IAR_DANGEROUS_NAMES.has(lastSegment);
+  }, []);
+
+  const isAncestorOfDangerousPaths = useCallback((path: string): string[] => {
+    // Check if this path's known children include dangerous names
+    const children = loadedTreeNodes.get(path) ?? [];
+    return children
+      .filter((c) => IAR_DANGEROUS_NAMES.has(c.name.toLowerCase()))
+      .map((c) => c.name);
+  }, [loadedTreeNodes]);
+
+  const addPathToSelection = useCallback((node: TreeNode) => {
+    setSelectedPaths((prev) => {
+      if (prev.find((p) => p.itemPath === node.path)) {
+        return prev.filter((p) => p.itemPath !== node.path);
+      }
+      return [...prev, { itemPath: node.path, itemId: node.itemId, scope: 'ItemAndDescendants' }];
+    });
+  }, []);
+
   const handleTogglePath = useCallback(
     (node: TreeNode) => {
-      setSelectedPaths((prev) => {
-        const exists = prev.find((p) => p.itemPath === node.path);
-        if (exists) {
-          return prev.filter((p) => p.itemPath !== node.path);
-        }
-        return [...prev, { itemPath: node.path, itemId: node.itemId, scope: 'ItemAndDescendants' }];
-      });
+      // If deselecting, just remove
+      const exists = selectedPaths.find((p) => p.itemPath === node.path);
+      if (exists) {
+        setSelectedPaths((prev) => prev.filter((p) => p.itemPath !== node.path));
+        return;
+      }
+
+      // Check if the path itself is dangerous
+      if (isDangerousPath(node.path)) {
+        setPendingDangerousNode(node);
+        return;
+      }
+
+      // Check if selecting with descendants would include dangerous children
+      const dangerousChildren = isAncestorOfDangerousPaths(node.path);
+      if (dangerousChildren.length > 0) {
+        setPendingDangerousNode(node);
+        return;
+      }
+
+      addPathToSelection(node);
     },
-    []
+    [selectedPaths, isDangerousPath, isAncestorOfDangerousPaths, addPathToSelection]
   );
 
   const handleRemovePath = useCallback((itemPath: string) => {
@@ -809,6 +850,65 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 }}
               >
                 Cancel Migration
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* IAR dangerous path warning — first warning */}
+        <AlertDialog open={!!pendingDangerousNode && !showIarSecondWarning} onOpenChange={(open) => { if (!open) setPendingDangerousNode(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Warning: IAR-Managed Content</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDangerousNode && isDangerousPath(pendingDangerousNode.path) ? (
+                  <>
+                    <strong>{pendingDangerousNode.path.split('/').pop()}</strong> typically contains items managed by Sitecore&apos;s Items as Resource (IAR) files.
+                  </>
+                ) : (
+                  <>
+                    This path contains children (<strong>{pendingDangerousNode ? isAncestorOfDangerousPaths(pendingDangerousNode.path).join(', ') : ''}</strong>) that are typically managed by Sitecore&apos;s Items as Resource (IAR) files.
+                  </>
+                )}
+                {' '}Migrating these items will create database versions that override the IAR-deployed items on the target environment. This can cause unexpected behavior and is generally not recommended.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingDangerousNode(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => setShowIarSecondWarning(true)}
+              >
+                I Understand the Risk
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* IAR dangerous path warning — second confirmation */}
+        <AlertDialog open={showIarSecondWarning} onOpenChange={(open) => { if (!open) { setShowIarSecondWarning(false); setPendingDangerousNode(null); } }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are You Absolutely Sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Overwriting IAR-managed items can break your target environment&apos;s deployed configuration. This action is difficult to reverse. Only proceed if you have a specific reason to migrate these items and understand the consequences.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => { setShowIarSecondWarning(false); setPendingDangerousNode(null); }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (pendingDangerousNode) {
+                    addPathToSelection(pendingDangerousNode);
+                  }
+                  setShowIarSecondWarning(false);
+                  setPendingDangerousNode(null);
+                }}
+              >
+                Proceed Anyway
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
