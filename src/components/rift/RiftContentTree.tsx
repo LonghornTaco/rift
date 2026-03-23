@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { TreeNode, MigrationPath } from '@/lib/rift/types';
 import { fetchTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
+
+// Items under /sitecore/content that are typically IAR-managed and should not be migrated
+const IAR_DISABLED_NAMES = new Set(['presentation', 'settings', 'dictionary', 'media']);
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {
@@ -17,6 +20,7 @@ interface TreeNodeRowProps {
   onExpand: (node: TreeNode) => void;
   onTogglePath: (node: TreeNode) => void;
   showHiddenItems: boolean;
+  isContentTree?: boolean;
   /** Set of child paths to show when hidden items are off. If undefined, no filtering. */
   visibleChildPaths?: Set<string>;
 }
@@ -32,12 +36,14 @@ function TreeNodeRow({
   onExpand,
   onTogglePath,
   showHiddenItems,
+  isContentTree,
   visibleChildPaths,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.itemId);
   const isLoading = loadingNodes.has(node.itemId);
   const isSelected = selectedPathSet.has(node.path);
   const isInherited = inheritedPaths.has(node.path);
+  const isIarDisabled = isContentTree && IAR_DISABLED_NAMES.has(node.name.toLowerCase());
   let children = childrenCache.get(node.path) ?? [];
 
   // Filter children based on visible paths (when hidden items are off)
@@ -72,11 +78,12 @@ function TreeNodeRow({
         <Checkbox
           checked={isSelected || isInherited}
           onCheckedChange={() => onTogglePath(node)}
-          disabled={isInherited}
+          disabled={isInherited || isIarDisabled}
           className={cn(
             'shrink-0',
-            isInherited && 'opacity-50 pointer-events-none'
+            (isInherited || isIarDisabled) && 'opacity-50 pointer-events-none'
           )}
+          title={isIarDisabled ? 'This item is typically managed by IAR files and should not be migrated' : undefined}
         />
 
         {/* Icon */}
@@ -110,6 +117,7 @@ function TreeNodeRow({
             onExpand={onExpand}
             onTogglePath={onTogglePath}
             showHiddenItems={showHiddenItems}
+            isContentTree={isContentTree}
           />
         ))}
     </>
@@ -380,6 +388,7 @@ export function RiftContentTree({
     const isLoadingNode = loadingNodes.has(node.itemId);
     const isSelected = selectedPathSet.has(node.path);
     const isInherited = inheritedPaths.has(node.path);
+    const isIarDisabled = !isMedia && IAR_DISABLED_NAMES.has(node.name.toLowerCase());
     let children = childrenCache.get(node.path) ?? [];
 
     const visiblePaths = getVisibleChildPaths(node, isMedia);
@@ -411,11 +420,12 @@ export function RiftContentTree({
           <Checkbox
             checked={isSelected || isInherited}
             onCheckedChange={() => onTogglePath(node)}
-            disabled={isInherited}
+            disabled={isInherited || isIarDisabled}
             className={cn(
               'shrink-0',
-              isInherited && 'opacity-50 pointer-events-none'
+              (isInherited || isIarDisabled) && 'opacity-50 pointer-events-none'
             )}
+            title={isIarDisabled ? 'This item is typically managed by IAR files and should not be migrated' : undefined}
           />
 
           <span className="text-muted-foreground shrink-0">
@@ -444,6 +454,7 @@ export function RiftContentTree({
                 node={child}
                 depth={depth + 1}
                 {...baseTreeRowProps}
+                isContentTree={!isMedia}
               />
             );
           })}
