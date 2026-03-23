@@ -545,6 +545,24 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
 
             {step2Phase === 'select' && (
               <>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline cursor-pointer mb-2"
+                  onClick={() => {
+                    setStep2Phase('credentials');
+                    setClientId('');
+                    setClientSecret('');
+                    setStep2Token(null);
+                    setStep2Projects([]);
+                    setStep2EnvOptions([]);
+                    setStep2SelectedProjectId(null);
+                    setStep2SelectedEnvId(null);
+                    setStep2ConnectError(null);
+                  }}
+                >
+                  Use different credentials
+                </button>
+
                 {renderSelectForm(
                   step2Projects,
                   step2SelectedProjectId,
