@@ -50,16 +50,13 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
       </div>
 
       {/* Saved Presets Section */}
+      {presets.length > 0 && (
       <div className="w-full max-w-[520px]">
         <div className="text-[11px] font-semibold text-muted-foreground mb-2 tracking-wide">
           SAVED PRESETS
         </div>
 
-        {presets.length === 0 ? (
-          <div className="text-[13px] text-muted-foreground text-center p-6">
-            No saved presets yet
-          </div>
-        ) : (
+        {(
           <div className="bg-card border border-border rounded-md">
             {presets.map((preset, index) => (
               <div
@@ -93,6 +90,7 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
