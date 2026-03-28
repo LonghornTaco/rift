@@ -166,24 +166,28 @@ async function pullItemData(
   itemPath: string,
   scope: string
 ): Promise<Record<string, unknown>[]> {
-  // Management API serialize uses enum values inline (not as variables)
+  // Management API serialize uses enum values inline for scope (not as variable),
+  // but excludedFieldIds must use a variable (inline braced GUIDs cause parse issues)
   const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `{
-    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: ${JSON.stringify(EXCLUDED_FIELD_IDS)}) {
+  const query = `query($excludedFieldIds: [String]) {
+    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: $excludedFieldIds) {
       data
     }
   }`;
 
-  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query }), auth);
+  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query, variables: { excludedFieldIds: EXCLUDED_FIELD_IDS } }), auth);
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Pull failed (HTTP ${res.status}): ${text.substring(0, 200)}`);
   }
   const json = await res.json();
-  if (json.errors && !json.data) {
+  if (json.errors) {
     const errMsg = json.errors.map((e: { message?: string }) => e.message).join('; ');
-    throw new Error(`GraphQL errors: ${errMsg.substring(0, 300)}`);
+    if (!json.data?.serialize) {
+      throw new Error(`GraphQL errors: ${errMsg.substring(0, 300)}`);
+    }
+    console.warn(`[Rift migrate] Partial GraphQL errors for ${itemPath}: ${errMsg.substring(0, 300)}`);
   }
 
   return (json?.data?.serialize ?? []).map((item: Record<string, unknown>) =>
@@ -199,16 +203,16 @@ async function pullTargetData(
   scope: string
 ): Promise<Map<string, Record<string, unknown>>> {
   const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `{
-    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: ${JSON.stringify(EXCLUDED_FIELD_IDS)}) {
+  const query = `query($excludedFieldIds: [String]) {
+    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: $excludedFieldIds) {
       data
     }
   }`;
 
-  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query }), auth);
+  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query, variables: { excludedFieldIds: EXCLUDED_FIELD_IDS } }), auth);
   if (!res.ok) return new Map();
   const json = await res.json();
-  if (json.errors) return new Map();
+  if (json.errors && !json.data?.serialize) return new Map();
 
   const items = (json?.data?.serialize ?? []).map((item: Record<string, unknown>) =>
     (item.data || item) as Record<string, unknown>
