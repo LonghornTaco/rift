@@ -95,33 +95,19 @@ async function getAccessToken(clientId: string, clientSecret: string): Promise<s
   return data.access_token;
 }
 
-// Headers matching Sitecore CLI behavior
-function managementHeaders(token: string): Record<string, string> {
+function authHeaders(token: string): Record<string, string> {
   return {
     'Content-Type': 'application/json',
-    'Accept-Encoding': 'gzip, deflate',
-    Authorization: `Bearer ${token}`,
-    'sitecore-graphql-version-comparing-enabled': 'True',
-    'sitecore-graphql-min-sms-version': '5.2.0',
-  };
-}
-
-function authoringHeaders(token: string): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    'Accept-Encoding': 'gzip, deflate',
     Authorization: `Bearer ${token}`,
   };
 }
 
 // POST with automatic token refresh on 401/403
-async function authPost(url: string, body: string, auth: AuthContext, isManagement = true): Promise<Response> {
-  const headers = isManagement ? managementHeaders(auth.token) : authoringHeaders(auth.token);
-  let res = await fetch(url, { method: 'POST', headers, body });
+async function authPost(url: string, body: string, auth: AuthContext): Promise<Response> {
+  let res = await fetch(url, { method: 'POST', headers: authHeaders(auth.token), body });
   if (res.status === 401 || res.status === 403) {
     auth.token = await getAccessToken(auth.clientId, auth.clientSecret);
-    const refreshedHeaders = isManagement ? managementHeaders(auth.token) : authoringHeaders(auth.token);
-    res = await fetch(url, { method: 'POST', headers: refreshedHeaders, body });
+    res = await fetch(url, { method: 'POST', headers: authHeaders(auth.token), body });
   }
   return res;
 }
@@ -153,7 +139,7 @@ async function fetchChildPaths(
     }
   `;
 
-  const res = await authPost(authoringUrl(cmUrl), JSON.stringify({ query, variables: { path: parentPath } }), auth, false);
+  const res = await authPost(authoringUrl(cmUrl), JSON.stringify({ query, variables: { path: parentPath } }), auth);
   if (!res.ok) return [];
   const json = await res.json();
   return json?.data?.item?.children?.nodes ?? [];
