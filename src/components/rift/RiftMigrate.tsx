@@ -71,6 +71,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [pendingSiteRootPath, setPendingSiteRootPath] = useState<string | null>(null);
   const [loadedTreeNodes, setLoadedTreeNodes] = useState<Map<string, TreeNode[]>>(new Map());
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [recycleOrphans, setRecycleOrphans] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -572,6 +573,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           sourceName={environments.find((e) => e.id === selectedEnvId)?.name ?? selectedEnvId}
           targetName={environments.find((e) => e.id === selectedTargetEnvId)?.name ?? selectedTargetEnvId}
           paths={selectedPaths}
+          recycleOrphans={recycleOrphans}
+          onRecycleOrphansChange={setRecycleOrphans}
           onCancel={() => setShowConfirmDialog(false)}
           onConfirm={async () => {
             setShowConfirmDialog(false);
@@ -636,6 +639,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                     paths: [{ itemPath: p.itemPath, scope: p.scope }],
                     batchSize,
                     logLevel,
+                    recycleOrphans,
                   }),
                 });
 
