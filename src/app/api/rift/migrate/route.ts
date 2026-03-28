@@ -159,31 +159,37 @@ async function pullExistingIds(
 function buildUpdateSubCommands(itemData: Record<string, unknown>): Array<{ command: number; data: Record<string, unknown> }> {
   const subCommands: Array<{ command: number; data: Record<string, unknown> }> = [];
 
-  const sharedFields = itemData.sharedFields as Array<{ fieldId: string; value: string }> | undefined;
+  const sharedFields = itemData.sharedFields as Array<{ fieldId: string; value: string; blobId?: string }> | undefined;
   if (sharedFields) {
     for (const f of sharedFields) {
-      subCommands.push({ command: 1, data: { fieldId: f.fieldId, value: f.value } });
+      const data: Record<string, unknown> = { fieldId: f.fieldId, value: f.value };
+      if (f.blobId) data.blobId = f.blobId;
+      subCommands.push({ command: 1, data });
     }
   }
 
   const unversionedFields = itemData.unversionedFields as Array<{
-    language: string; fields: Array<{ fieldId: string; value: string }>;
+    language: string; fields: Array<{ fieldId: string; value: string; blobId?: string }>;
   }> | undefined;
   if (unversionedFields) {
     for (const uf of unversionedFields) {
       for (const f of uf.fields) {
-        subCommands.push({ command: 1, data: { fieldId: f.fieldId, value: f.value, language: uf.language } });
+        const data: Record<string, unknown> = { fieldId: f.fieldId, value: f.value, language: uf.language };
+        if (f.blobId) data.blobId = f.blobId;
+        subCommands.push({ command: 1, data });
       }
     }
   }
 
   const versions = itemData.versions as Array<{
-    language: string; versionNumber: number; fields: Array<{ fieldId: string; value: string }>;
+    language: string; versionNumber: number; fields: Array<{ fieldId: string; value: string; blobId?: string }>;
   }> | undefined;
   if (versions) {
     for (const ver of versions) {
       for (const f of ver.fields) {
-        subCommands.push({ command: 1, data: { fieldId: f.fieldId, value: f.value, language: ver.language, version: ver.versionNumber } });
+        const data: Record<string, unknown> = { fieldId: f.fieldId, value: f.value, language: ver.language, version: ver.versionNumber };
+        if (f.blobId) data.blobId = f.blobId;
+        subCommands.push({ command: 1, data });
       }
     }
   }

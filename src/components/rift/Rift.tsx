@@ -376,7 +376,7 @@ export function Rift() {
             <div className="text-xs text-muted-foreground space-y-1">
               <div><span className="font-medium text-foreground">Version:</span> 1.0.0</div>
               <div><span className="font-medium text-foreground">Author:</span> Wilkerson Consulting</div>
-              <div><span className="font-medium text-foreground">Website:</span> <a href="https://longhorntaco.com/rift" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">longhorntaco.com/rift</a></div>
+              <div><span className="font-medium text-foreground">Website:</span> <a href="https://rift-app.dev" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">rift-app.dev</a></div>
             </div>
             <div className="text-[10px] text-muted-foreground/60 mt-6">
               &copy; 2026 Wilkerson Consulting. All rights reserved.
