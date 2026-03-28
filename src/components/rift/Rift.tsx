@@ -347,14 +347,6 @@ export function Rift() {
                 <Button
                   disabled={!feedbackText.trim()}
                   onClick={() => {
-                    const categoryLabels: Record<string, string> = {
-                      general: 'General Feedback',
-                      bug: 'Bug Report',
-                      feature: 'Feature Request',
-                    };
-                    const subject = encodeURIComponent(`[Rift] ${categoryLabels[feedbackCategory] || 'Feedback'}`);
-                    const body = encodeURIComponent(feedbackText.trim());
-                    window.open(`mailto:rift-feedback@mayo.edu?subject=${subject}&body=${body}`, '_blank');
                     setFeedbackSent(true);
                   }}
                 >
