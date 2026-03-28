@@ -152,16 +152,19 @@ async function pullItemData(
   itemPath: string,
   scope: string
 ): Promise<Record<string, unknown>[]> {
-  // Management API serialize uses enum values inline for scope (not as variable),
-  // but excludedFieldIds must use a variable (inline braced GUIDs cause parse issues)
+  // Management API serialize uses enum values inline (not as variables).
+  // Note: excludedFieldIds is not used — it triggers server-side CLI version
+  // checking (SMS 5.2.125+) which requires sitecore-graphql-cli-version headers.
+  // Statistics fields (__Updated, __Lock, etc.) are included in the migration,
+  // which is acceptable for a migration tool.
   const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `query($excludedFieldIds: [String]) {
-    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: $excludedFieldIds) {
+  const query = `{
+    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
       data
     }
   }`;
 
-  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query, variables: { excludedFieldIds: EXCLUDED_FIELD_IDS } }), auth);
+  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query }), auth);
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -189,13 +192,13 @@ async function pullTargetData(
   scope: string
 ): Promise<Map<string, Record<string, unknown>>> {
   const safePath = itemPath.replace(/"/g, '\\"');
-  const query = `query($excludedFieldIds: [String]) {
-    serialize(path: "${safePath}", database: "master", scope: ${scope}, excludedFieldIds: $excludedFieldIds) {
+  const query = `{
+    serialize(path: "${safePath}", database: "master", scope: ${scope}) {
       data
     }
   }`;
 
-  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query, variables: { excludedFieldIds: EXCLUDED_FIELD_IDS } }), auth);
+  const res = await authPost(managementUrl(cmUrl), JSON.stringify({ query }), auth);
   if (!res.ok) return new Map();
   const json = await res.json();
   if (json.errors && !json.data?.serialize) return new Map();
