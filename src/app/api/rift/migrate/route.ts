@@ -18,7 +18,7 @@ interface MigrateRequestBody {
   };
   paths: Array<{
     itemPath: string;
-    scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants';
+    scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants' | 'ChildrenOnly' | 'DescendantsOnly';
   }>;
   batchSize?: number;
   logLevel?: string;
@@ -62,7 +62,12 @@ const VALID_SCOPES: Record<string, string> = {
   SingleItem: 'SINGLE_ITEM',
   ItemAndChildren: 'ITEM_AND_CHILDREN',
   ItemAndDescendants: 'ITEM_AND_DESCENDANTS',
+  ChildrenOnly: 'ITEM_AND_CHILDREN',
+  DescendantsOnly: 'ITEM_AND_DESCENDANTS',
 };
+
+// Scopes where the root item should be excluded from results
+const EXCLUDE_ROOT_SCOPES = new Set(['ChildrenOnly', 'DescendantsOnly']);
 
 const MANAGEMENT_PATH = '/sitecore/api/management';
 const DEFAULT_BATCH_SIZE = 200;
@@ -816,7 +821,8 @@ export async function POST(request: NextRequest) {
         async function migrateSubtree(
           itemPath: string,
           label: string,
-          depth: number
+          depth: number,
+          skipRoot = false
         ): Promise<void> {
           const indent = depth > 0 ? `${'  '.repeat(depth)}↳ ` : '';
           send({ type: 'status', message: `${indent}Pulling ${label}: ${itemPath}...` });
@@ -824,6 +830,9 @@ export async function POST(request: NextRequest) {
           let items: Record<string, unknown>[];
           try {
             items = await pullItemData(source.cmUrl, sourceAuth, itemPath, 'ITEM_AND_CHILDREN');
+            if (skipRoot) {
+              items = items.filter((item) => (item.path as string) !== itemPath);
+            }
             send({ type: 'pull-complete', path: itemPath, itemCount: items.length });
             totalPulled += items.length;
           } catch (err) {
@@ -839,6 +848,14 @@ export async function POST(request: NextRequest) {
           let targetDataMap: Map<string, Record<string, unknown>>;
           try {
             targetDataMap = await pullTargetData(target.cmUrl, targetAuth, itemPath, 'ITEM_AND_CHILDREN');
+            if (skipRoot) {
+              for (const [id, item] of targetDataMap) {
+                if ((item.path as string) === itemPath) {
+                  targetDataMap.delete(id);
+                  break;
+                }
+              }
+            }
           } catch {
             targetDataMap = new Map();
           }
@@ -869,9 +886,11 @@ export async function POST(request: NextRequest) {
 
           send({ type: 'status', message: `[${i + 1}/${sortedPaths.length}] Starting ${label}: ${p.itemPath}...` });
 
+          const excludeRoot = EXCLUDE_ROOT_SCOPES.has(p.scope);
+
           if (scope === 'ITEM_AND_DESCENDANTS' && isMedia) {
             // Walk media tree depth-first to avoid OOM from large binary blobs
-            await migrateSubtree(p.itemPath, label, 0);
+            await migrateSubtree(p.itemPath, label, 0, excludeRoot);
           } else {
             // Content descendants (small items, fast single pull),
             // SINGLE_ITEM, or ITEM_AND_CHILDREN — pull directly
@@ -880,6 +899,10 @@ export async function POST(request: NextRequest) {
             let items: Record<string, unknown>[];
             try {
               items = await pullItemData(source.cmUrl, sourceAuth, p.itemPath, scope);
+              // For ChildrenOnly / DescendantsOnly, strip the root item
+              if (excludeRoot) {
+                items = items.filter((item) => (item.path as string) !== p.itemPath);
+              }
               send({ type: 'pull-complete', path: p.itemPath, itemCount: items.length });
               totalPulled += items.length;
             } catch (err) {
@@ -895,6 +918,15 @@ export async function POST(request: NextRequest) {
             let targetDataMap: Map<string, Record<string, unknown>>;
             try {
               targetDataMap = await pullTargetData(target.cmUrl, targetAuth, p.itemPath, scope);
+              if (excludeRoot) {
+                // Remove root item from target map so it's not recycled
+                for (const [id, item] of targetDataMap) {
+                  if ((item.path as string) === p.itemPath) {
+                    targetDataMap.delete(id);
+                    break;
+                  }
+                }
+              }
             } catch {
               targetDataMap = new Map();
             }

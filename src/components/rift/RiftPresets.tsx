@@ -25,6 +25,8 @@ const scopeLabels: Record<MigrationPath['scope'], string> = {
   SingleItem: 'Item only',
   ItemAndChildren: 'Item + children',
   ItemAndDescendants: 'Item + descendants',
+  ChildrenOnly: 'Children only',
+  DescendantsOnly: 'Descendants only',
 };
 
 function truncatePath(path: string): string {

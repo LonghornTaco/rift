@@ -231,7 +231,7 @@ Executes a content migration from source to target environment. Returns a stream
   "paths": [
     {
       "itemPath": "string (required, validated)",
-      "scope": "SingleItem | ItemAndChildren | ItemAndDescendants"
+      "scope": "SingleItem | ItemAndChildren | ItemAndDescendants | ChildrenOnly | DescendantsOnly"
     }
   ],
   "batchSize": 200 // optional, clamped to 1–500

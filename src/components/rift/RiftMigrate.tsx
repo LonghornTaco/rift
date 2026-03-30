@@ -141,7 +141,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         continue;
       }
       // Check if descendants scope would include dangerous children
-      if (sp.scope === 'ItemAndDescendants' || sp.scope === 'ItemAndChildren') {
+      if (sp.scope === 'ItemAndDescendants' || sp.scope === 'ItemAndChildren' || sp.scope === 'ChildrenOnly' || sp.scope === 'DescendantsOnly') {
         const children = loadedTreeNodes.get(sp.itemPath) ?? [];
         for (const c of children) {
           if (IAR_DANGEROUS_NAMES.has(c.name.toLowerCase())) {
@@ -235,7 +235,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     for (const sp of selectedPaths) {
       if (sp.scope === 'SingleItem') continue;
 
-      if (sp.scope === 'ItemAndDescendants') {
+      if (sp.scope === 'ItemAndDescendants' || sp.scope === 'DescendantsOnly') {
         // Check all loaded nodes — any whose path starts with selectedPath + "/" is inherited
         for (const [, children] of loadedTreeNodes) {
           for (const child of children) {
@@ -244,7 +244,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             }
           }
         }
-      } else if (sp.scope === 'ItemAndChildren') {
+      } else if (sp.scope === 'ItemAndChildren' || sp.scope === 'ChildrenOnly') {
         // Only direct children of the selected node
         const directChildren = loadedTreeNodes.get(sp.itemPath);
         if (directChildren) {

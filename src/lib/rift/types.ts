@@ -10,7 +10,7 @@ export interface RiftEnvironment {
 export interface MigrationPath {
   itemPath: string;
   itemId: string;
-  scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants';
+  scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants' | 'ChildrenOnly' | 'DescendantsOnly';
 }
 
 export interface RiftPreset {
