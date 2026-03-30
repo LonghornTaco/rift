@@ -157,7 +157,11 @@ export function RiftContentTree({
   const onChildrenLoadedRef = useRef(onChildrenLoaded);
   onChildrenLoadedRef.current = onChildrenLoaded;
 
-  const selectedPathSet = new Set(selectedPaths.map((p) => p.itemPath));
+  const selectedPathSet = new Set(
+    selectedPaths
+      .filter((p) => p.scope !== 'ChildrenOnly' && p.scope !== 'DescendantsOnly')
+      .map((p) => p.itemPath)
+  );
 
   // Parse rootPath into segments for building filter paths
   const pathInfo = useMemo(() => {
