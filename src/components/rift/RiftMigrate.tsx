@@ -330,6 +330,22 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     [selectedTargetEnvId]
   );
 
+  // Authenticate a target environment and set targetSessionId
+  const handleTargetEnvChange = useCallback(async (envId: string) => {
+    setSelectedTargetEnvId(envId);
+    setTargetSessionId(null);
+    const envs = await getEnvironments();
+    const env = envs.find((e) => e.id === envId);
+    if (env) {
+      try {
+        const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+        setTargetSessionId(result.sessionId);
+      } catch {
+        setAuthError('Failed to authenticate target environment');
+      }
+    }
+  }, []);
+
   // Sync state when loadedPreset changes (e.g. loading from Presets page)
   useEffect(() => {
     if (!loadedPreset) return;
@@ -348,7 +364,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       handleEnvChange(loadedPreset.sourceEnvId);
     }
     if (loadedPreset.targetEnvId) {
-      setSelectedTargetEnvId(loadedPreset.targetEnvId);
+      handleTargetEnvChange(loadedPreset.targetEnvId);
     }
     if (loadedPreset.siteRootPath) {
       setPendingSiteRootPath(loadedPreset.siteRootPath);
@@ -458,19 +474,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         {/* Target */}
         <div>
           <div className="text-xs font-semibold text-muted-foreground mb-0.5">TARGET ENVIRONMENT</div>
-          <Select value={selectedTargetEnvId ?? undefined} onValueChange={async (val) => {
-            setSelectedTargetEnvId(val);
-            setTargetSessionId(null);
-            const env = environments.find((e) => e.id === val);
-            if (env) {
-              try {
-                const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
-                setTargetSessionId(result.sessionId);
-              } catch {
-                setAuthError('Failed to authenticate target environment');
-              }
-            }
-          }} disabled={isMigrating}>
+          <Select value={selectedTargetEnvId ?? undefined} onValueChange={handleTargetEnvChange} disabled={isMigrating}>
             <SelectTrigger size="sm">
               <SelectValue placeholder="Select target..." />
             </SelectTrigger>
