@@ -147,6 +147,10 @@ export function RiftContentTree({
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const prefetchQueueRef = useRef<string[]>([]);
+  const prefetchActiveRef = useRef(0);
+  const MAX_PREFETCH_CONCURRENT = 2;
+
   // The two top-level nodes: "content" and "media library" from /sitecore
   const [contentNode, setContentNode] = useState<TreeNode | null>(null);
   const [mediaLibraryNode, setMediaLibraryNode] = useState<TreeNode | null>(null);
@@ -156,6 +160,42 @@ export function RiftContentTree({
 
   const onChildrenLoadedRef = useRef(onChildrenLoaded);
   onChildrenLoadedRef.current = onChildrenLoaded;
+
+  const processPrefetchQueue = useCallback(async () => {
+    while (
+      prefetchQueueRef.current.length > 0 &&
+      prefetchActiveRef.current < MAX_PREFETCH_CONCURRENT
+    ) {
+      const path = prefetchQueueRef.current.shift();
+      if (!path || childrenCacheRef.current.has(path)) continue;
+
+      prefetchActiveRef.current++;
+      try {
+        const children = await fetchTreeChildren(cmUrl, accessToken, path);
+        setChildrenCache((prev) => {
+          if (prev.has(path)) return prev;
+          const next = new Map(prev);
+          next.set(path, children);
+          return next;
+        });
+        onChildrenLoadedRef.current?.(path, children);
+      } catch {
+        // Silent — prefetch failures are not user-facing
+      } finally {
+        prefetchActiveRef.current--;
+        processPrefetchQueue();
+      }
+    }
+  }, [cmUrl, accessToken]);
+
+  const enqueuePrefetch = useCallback((children: TreeNode[]) => {
+    const toFetch = children
+      .filter((c) => c.hasChildren && !childrenCacheRef.current.has(c.path))
+      .map((c) => c.path);
+    if (toFetch.length === 0) return;
+    prefetchQueueRef.current.push(...toFetch);
+    processPrefetchQueue();
+  }, [processPrefetchQueue]);
 
   const selectedPathSet = new Set(
     selectedPaths
@@ -222,6 +262,9 @@ export function RiftContentTree({
     const loadTrees = async () => {
       if (!pathInfo) return;
 
+      prefetchQueueRef.current = [];
+      prefetchActiveRef.current = 0;
+
       try {
         const sitecoreChildren = await fetchTreeChildren(cmUrl, accessToken, '/sitecore');
         if (cancelled) return;
@@ -261,6 +304,14 @@ export function RiftContentTree({
             const siteChildren = await fetchTreeChildren(cmUrl, accessToken, currentPath);
             newCache.set(currentPath, siteChildren);
             onChildrenLoadedRef.current?.(currentPath, siteChildren);
+
+            // Queue prefetch for site children's children
+            const childrenToPreload = siteChildren.filter((c) => c.hasChildren);
+            for (const child of childrenToPreload) {
+              if (!newCache.has(child.path)) {
+                prefetchQueueRef.current.push(child.path);
+              }
+            }
           } catch {}
         }
 
@@ -304,6 +355,7 @@ export function RiftContentTree({
         });
         setExpandedNodes(expandIds);
         setIsLoading(false);
+        processPrefetchQueue();
       } catch (err) {
         console.error('[Rift] Failed to load content trees:', err);
         if (!cancelled) setIsLoading(false);
@@ -374,6 +426,7 @@ export function RiftContentTree({
           const children = await fetchTreeChildren(cmUrl, accessToken, node.path);
           setChildrenCache((prev) => new Map(prev).set(node.path, children));
           onChildrenLoadedRef.current?.(node.path, children);
+          enqueuePrefetch(children);
         } catch {
           // Silently handle
         } finally {
@@ -385,7 +438,7 @@ export function RiftContentTree({
         }
       }
     },
-    [cmUrl, accessToken]
+    [cmUrl, accessToken, enqueuePrefetch]
   );
 
   const baseTreeRowProps = {
