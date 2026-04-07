@@ -476,7 +476,7 @@ export function RiftEnvironments() {
               key={env.id}
               className={cn(
                 'rounded-lg p-4 flex flex-col gap-2 transition-colors border',
-                status === 'connected' && 'bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-800',
+                status === 'connected' && 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700',
                 status === 'failed' && 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-800',
                 status === 'untested' && 'bg-card border-border'
               )}
