@@ -85,6 +85,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [migrationMessages, setMigrationMessages] = useState<MigrationMessage[]>([]);
   const [migrationComplete, setMigrationComplete] = useState(false);
   const migrationStartRef = useRef<number>(0);
+  const [splitPercent, setSplitPercent] = useState(60);
+  const splitterContainerRef = useRef<HTMLDivElement>(null);
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [overwritePresetId, setOverwritePresetId] = useState<string | null>(null);
@@ -203,6 +205,31 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     setSelectedPaths((prev) =>
       prev.map((p) => (p.itemPath === itemPath ? { ...p, scope } : p))
     );
+  }, []);
+
+  const handleSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitterContainerRef.current;
+    if (!container) return;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const y = moveEvent.clientY - rect.top;
+      const pct = Math.min(80, Math.max(20, (y / rect.height) * 100));
+      setSplitPercent(pct);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   }, []);
 
   const handleSavePreset = useCallback(() => {
@@ -869,50 +896,73 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Two-panel layout */}
-      <div className="flex flex-1 min-h-0 relative">
-        {/* Left panel — content tree */}
-        <div className="flex-1 border-r border-border p-4 overflow-y-auto">
-          {accessToken && selectedSiteRootPath && selectedEnvId ? (
-            <RiftContentTree
-              cmUrl={environments.find((e) => e.id === selectedEnvId)?.cmUrl ?? ''}
-              accessToken={accessToken}
-              rootPath={selectedSiteRootPath}
+      {/* Main content area with optional bottom splitter */}
+      <div ref={splitterContainerRef} className="flex flex-col flex-1 min-h-0">
+        {/* Two-panel layout (tree + selection) */}
+        <div
+          className="flex min-h-0 overflow-hidden"
+          style={{
+            flex: (isMigrating || migrationComplete) ? `0 0 ${splitPercent}%` : '1 1 auto',
+          }}
+        >
+          {/* Left panel — content tree */}
+          <div className="flex-1 border-r border-border p-4 overflow-y-auto">
+            {accessToken && selectedSiteRootPath && selectedEnvId ? (
+              <RiftContentTree
+                cmUrl={environments.find((e) => e.id === selectedEnvId)?.cmUrl ?? ''}
+                accessToken={accessToken}
+                rootPath={selectedSiteRootPath}
+                selectedPaths={selectedPaths}
+                onTogglePath={handleTogglePath}
+                inheritedPaths={inheritedPaths}
+                onChildrenLoaded={handleChildrenLoaded}
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                Select a site to browse the content tree
+              </div>
+            )}
+          </div>
+
+          {/* Right panel — selected paths */}
+          <div className="w-[300px] p-4 bg-card overflow-y-auto">
+            <RiftSelectionPanel
               selectedPaths={selectedPaths}
-              onTogglePath={handleTogglePath}
-              inheritedPaths={inheritedPaths}
-              onChildrenLoaded={handleChildrenLoaded}
+              onRemovePath={handleRemovePath}
+              onChangeScope={handleChangeScope}
+              onClearAll={() => setSelectedPaths([])}
             />
-          ) : (
-            <div className="text-sm text-muted-foreground">
-              Select a site to browse the content tree
-            </div>
-          )}
+          </div>
         </div>
 
-        {/* Right panel — selected paths */}
-        <div className="w-[300px] p-4 bg-card overflow-y-auto">
-          <RiftSelectionPanel
-            selectedPaths={selectedPaths}
-            onRemovePath={handleRemovePath}
-            onChangeScope={handleChangeScope}
-            onClearAll={() => setSelectedPaths([])}
-          />
-        </div>
-
-        {/* Migration progress overlay */}
+        {/* Draggable splitter + Migration progress */}
         {(isMigrating || migrationComplete) && (
-          <RiftProgressOverlay
-            isActive={isMigrating}
-            messages={migrationMessages}
-            parallelPaths={parallelPaths}
-            onCancel={() => setShowCancelConfirm(true)}
-            onClose={() => {
-              setMigrationComplete(false);
-              setMigrationMessages([]);
-            }}
-          />
+          <>
+            {/* Splitter handle */}
+            <div
+              onMouseDown={handleSplitterMouseDown}
+              className="h-1.5 bg-border hover:bg-primary/40 cursor-row-resize flex items-center justify-center shrink-0 transition-colors"
+            >
+              <div className="w-8 h-0.5 bg-muted-foreground/40 rounded-full" />
+            </div>
+
+            {/* Progress panel */}
+            <div className="min-h-0" style={{ flex: `0 0 ${100 - splitPercent}%` }}>
+              <RiftProgressOverlay
+                isActive={isMigrating}
+                messages={migrationMessages}
+                parallelPaths={parallelPaths}
+                onCancel={() => setShowCancelConfirm(true)}
+                onClose={() => {
+                  setMigrationComplete(false);
+                  setMigrationMessages([]);
+                  setSplitPercent(60);
+                }}
+              />
+            </div>
+          </>
         )}
+      </div>
 
         {/* Cancel confirmation */}
         <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
@@ -1065,7 +1115,6 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </div>
     </div>
   );
 }

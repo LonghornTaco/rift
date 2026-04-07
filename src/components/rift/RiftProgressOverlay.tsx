@@ -161,7 +161,7 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
   if (!isActive && messages.length === 0) return null;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-card border-t border-border shadow-lg z-10 flex flex-col max-h-[60%]">
+    <div className="bg-card border-t border-border shadow-lg flex flex-col min-h-0 overflow-hidden h-full">
       {/* Header with close button */}
       <div className={cn(
         'px-4 py-2.5 flex items-center justify-between shrink-0 border-b',
