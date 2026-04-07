@@ -469,12 +469,26 @@ async function executeBatchedCommands(
           failed++;
           const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? '';
           send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg}` });
+          send({
+            type: 'item-failure',
+            itemName: r.name,
+            operation: label.split(' ').pop()?.toUpperCase() ?? 'UNKNOWN',
+            reason: errorMsg,
+          });
         }
       }
     } catch (err) {
       failed += batch.length;
       const detail = err instanceof Error ? err.message : String(err);
       send({ type: 'error', message: `${label} batch failed: ${detail}` });
+      for (const cmd of batch) {
+        send({
+          type: 'item-failure',
+          itemName: cmd.itemID,
+          operation: label.split(' ').pop()?.toUpperCase() ?? 'UNKNOWN',
+          reason: detail,
+        });
+      }
     }
   }
 
@@ -673,6 +687,14 @@ async function processAndPushItems(
           failed += retryItems.length;
           const detail = retryErr instanceof Error ? retryErr.message : String(retryErr);
           send({ type: 'error', message: `${label} retry failed: ${detail}` });
+          for (const item of retryItems) {
+            send({
+              type: 'item-failure',
+              itemName: (item.name as string) ?? (item.id as string) ?? 'unknown',
+              operation: 'UPDATE',
+              reason: detail,
+            });
+          }
         }
       }
 
@@ -683,6 +705,14 @@ async function processAndPushItems(
       const detail = err instanceof Error ? err.message : String(err);
       console.error(`[Rift migrate] Batch ${batchNum} failed:`, detail);
       send({ type: 'error', message: `${label} batch ${batchNum} failed: ${detail}` });
+      for (const item of batch) {
+        send({
+          type: 'item-failure',
+          itemName: (item.name as string) ?? (item.id as string) ?? 'unknown',
+          operation: 'BATCH_FAILURE',
+          reason: detail,
+        });
+      }
     }
 
     send({
