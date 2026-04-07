@@ -706,26 +706,42 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
               // Final summary
               const completeMsgs = localMessages.filter((m) => m.type === 'complete');
-              const totalSucceeded = completeMsgs.reduce((s, m) => s + ((m.succeeded as number) || 0), 0);
               const totalFailed = completeMsgs.reduce((s, m) => s + ((m.failed as number) || 0), 0);
               const totalCreated = completeMsgs.reduce((s, m) => s + ((m.created as number) || 0), 0);
               const totalUpdated = completeMsgs.reduce((s, m) => s + ((m.updated as number) || 0), 0);
+              const totalMoved = completeMsgs.reduce((s, m) => s + ((m.moved as number) || 0), 0);
+              const totalRenamed = completeMsgs.reduce((s, m) => s + ((m.renamed as number) || 0), 0);
+              const totalRecycled = completeMsgs.reduce((s, m) => s + ((m.recycled as number) || 0), 0);
               const totalItems = completeMsgs.reduce((s, m) => s + ((m.totalItems as number) || 0), 0);
+              const totalSucceeded = completeMsgs.reduce((s, m) => s + ((m.succeeded as number) || 0), 0);
               const hasErrors = localMessages.some((m) => m.type === 'error');
+
+              const statParts: string[] = [];
+              if (totalCreated > 0) statParts.push(`${totalCreated} created`);
+              if (totalUpdated > 0) statParts.push(`${totalUpdated} updated`);
+              if (totalMoved > 0) statParts.push(`${totalMoved} moved`);
+              if (totalRenamed > 0) statParts.push(`${totalRenamed} renamed`);
+              if (totalRecycled > 0) statParts.push(`${totalRecycled} recycled`);
+              statParts.push(`${totalFailed} failed`);
+
+              const statsMessage = statParts.join(', ');
 
               addMsg({
                 type: 'complete',
                 totalItems,
                 created: totalCreated,
                 updated: totalUpdated,
+                moved: totalMoved,
+                renamed: totalRenamed,
+                recycled: totalRecycled,
                 succeeded: totalSucceeded,
                 failed: totalFailed,
                 pushed: totalSucceeded,
                 message: hasErrors && totalSucceeded === 0
-                  ? 'Migration failed.'
-                  : totalFailed === 0 && !hasErrors
-                    ? `Migration complete: ${totalSucceeded} items migrated (${totalCreated} created, ${totalUpdated} updated).`
-                    : `Migration complete: ${totalSucceeded} migrated (${totalCreated} created, ${totalUpdated} updated), ${totalFailed} failed.`,
+                  ? `Migration failed: ${statsMessage}.`
+                  : statParts.length === 1 && totalFailed === 0
+                    ? 'Migration complete: no changes needed.'
+                    : `Migration complete: ${statsMessage}.`,
               });
             } catch (err) {
               if (err instanceof DOMException && err.name === 'AbortError') {
