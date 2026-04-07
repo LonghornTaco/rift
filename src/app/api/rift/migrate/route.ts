@@ -468,7 +468,7 @@ async function executeBatchedCommands(
         } else {
           failed++;
           const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? '';
-          send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg.substring(0, 200)}` });
+          send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg}` });
         }
       }
     } catch (err) {
@@ -622,7 +622,13 @@ async function processAndPushItems(
             retryItems.push(batch[activeIndices[ri]]);
           } else {
             failed++;
-            send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg.substring(0, 200)}` });
+            send({ type: 'warning', message: `Failed: ${r.name}: ${errorMsg}` });
+            send({
+              type: 'item-failure',
+              itemName: r.name,
+              operation: activeCommands[ri]?.isCreate ? 'CREATE' : 'UPDATE',
+              reason: errorMsg,
+            });
           }
         }
       }
@@ -654,7 +660,13 @@ async function processAndPushItems(
             } else {
               failed++;
               const errorMsg = r.messages?.map((m) => m.message).join('; ') ?? 'Unknown error';
-              send({ type: 'warning', message: `Failed (retry): ${r.name}: ${errorMsg.substring(0, 200)}` });
+              send({ type: 'warning', message: `Failed (retry): ${r.name}: ${errorMsg}` });
+              send({
+                type: 'item-failure',
+                itemName: r.name,
+                operation: 'UPDATE',
+                reason: errorMsg,
+              });
             }
           }
         } catch (retryErr) {
