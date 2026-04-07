@@ -714,14 +714,6 @@ async function processAndPushItems(
   return { succeeded, failed, created, updated, skipped, moved, renamed, recycled };
 }
 
-// Build the summary portion of a completion message from non-zero counts
-function buildStatsSummary(stats: Record<string, number>): string {
-  const parts: string[] = [];
-  for (const [label, count] of Object.entries(stats)) {
-    if (count > 0) parts.push(`${count} ${label}`);
-  }
-  return parts.join(', ');
-}
 
 export async function POST(request: NextRequest) {
   const clientIp = getClientIp(request);
@@ -939,14 +931,20 @@ export async function POST(request: NextRequest) {
           clientIp, totalPulled, totalSucceeded, totalFailed, totalCreated, totalUpdated, totalSkipped, totalMoved, totalRenamed, totalRecycled,
         });
 
-        const summary = buildStatsSummary({
-          created: totalCreated,
-          updated: totalUpdated,
-          moved: totalMoved,
-          renamed: totalRenamed,
-          recycled: totalRecycled,
-          unchanged: totalSkipped,
-        });
+        const statParts: string[] = [];
+        if (totalCreated > 0) statParts.push(`${totalCreated} created`);
+        if (totalUpdated > 0) statParts.push(`${totalUpdated} updated`);
+        if (totalMoved > 0) statParts.push(`${totalMoved} moved`);
+        if (totalRenamed > 0) statParts.push(`${totalRenamed} renamed`);
+        if (totalRecycled > 0) statParts.push(`${totalRecycled} recycled`);
+        statParts.push(`${totalFailed} failed`);
+
+        const statsMessage = statParts.join(', ');
+        const message = totalSucceeded === 0 && totalFailed > 0
+          ? `Migration failed: ${statsMessage}.`
+          : statParts.length === 1 && totalFailed === 0
+            ? 'Migration complete: no changes needed.'
+            : `Migration complete: ${statsMessage}.`;
 
         send({
           type: 'complete',
@@ -960,9 +958,7 @@ export async function POST(request: NextRequest) {
           succeeded: totalSucceeded,
           failed: totalFailed,
           pushed: totalSucceeded,
-          message: totalFailed === 0
-            ? `Migration complete: ${totalSucceeded} operations (${summary}).`
-            : `Migration complete: ${totalSucceeded} operations (${summary}), ${totalFailed} failed.`,
+          message,
         });
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
