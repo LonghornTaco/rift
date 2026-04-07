@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-interface ProjectsRequestBody {
-  accessToken: string;
-}
+import { withSession } from '@/lib/rift/session-middleware';
 
 export async function POST(request: NextRequest) {
-  let body: ProjectsRequestBody;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+  const sessionResult = await withSession(request);
+  if (!sessionResult.ok) return sessionResult.response;
+  const { session } = sessionResult;
 
-  const { accessToken } = body;
-  if (!accessToken) {
-    return NextResponse.json({ error: 'accessToken is required' }, { status: 400 });
-  }
+  const accessToken = session.accessToken;
 
   try {
     const response = await fetch('https://xmclouddeploy-api.sitecorecloud.io/api/projects/v1', {

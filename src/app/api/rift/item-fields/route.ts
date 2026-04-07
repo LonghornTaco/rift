@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateCmUrl, validateItemPath, upstreamError, sanitizeError } from '@/lib/rift/api-security';
+import { withSession } from '@/lib/rift/session-middleware';
 
 interface ItemFieldsRequestBody {
-  cmUrl: string;
-  accessToken: string;
   itemPath: string;
   fieldNames: string[];
 }
 
 export async function POST(request: NextRequest) {
+  const sessionResult = await withSession(request);
+  if (!sessionResult.ok) return sessionResult.response;
+  const { session } = sessionResult;
+
+  const cmUrl = session.cmUrl;
+  const accessToken = session.accessToken;
+
   let body: ItemFieldsRequestBody;
   try {
     body = await request.json();
@@ -16,10 +22,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { cmUrl, accessToken, itemPath, fieldNames } = body;
-  if (!cmUrl || !accessToken || !itemPath) {
+  const { itemPath, fieldNames } = body;
+  if (!itemPath) {
     return NextResponse.json(
-      { error: 'cmUrl, accessToken, and itemPath are required' },
+      { error: 'itemPath is required' },
       { status: 400 }
     );
   }

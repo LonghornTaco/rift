@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateCmUrl, upstreamError, sanitizeError } from '@/lib/rift/api-security';
-
-interface SitesRequestBody {
-  cmUrl: string;
-  accessToken: string;
-}
+import { withSession } from '@/lib/rift/session-middleware';
 
 export async function POST(request: NextRequest) {
-  let body: SitesRequestBody;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+  const sessionResult = await withSession(request);
+  if (!sessionResult.ok) return sessionResult.response;
+  const { session } = sessionResult;
 
-  const { cmUrl, accessToken } = body;
-  if (!cmUrl || !accessToken) {
-    return NextResponse.json(
-      { error: 'cmUrl and accessToken are required' },
-      { status: 400 }
-    );
-  }
+  const cmUrl = session.cmUrl;
+  const accessToken = session.accessToken;
 
   const cmUrlError = validateCmUrl(cmUrl);
   if (cmUrlError) {

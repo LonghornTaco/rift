@@ -123,8 +123,6 @@ function TreeNodeRow({
 }
 
 interface RiftContentTreeProps {
-  cmUrl: string;
-  accessToken: string;
   rootPath: string;
   selectedPaths: MigrationPath[];
   onTogglePath: (node: TreeNode) => void;
@@ -135,8 +133,6 @@ interface RiftContentTreeProps {
 }
 
 export function RiftContentTree({
-  cmUrl,
-  accessToken,
   rootPath,
   selectedPaths,
   onTogglePath,
@@ -175,7 +171,7 @@ export function RiftContentTree({
 
       prefetchActiveRef.current++;
       try {
-        const children = await fetchTreeChildren(cmUrl, accessToken, path);
+        const children = await fetchTreeChildren(path);
         setChildrenCache((prev) => {
           if (prev.has(path)) return prev;
           const next = new Map(prev);
@@ -190,7 +186,7 @@ export function RiftContentTree({
         processPrefetchQueue();
       }
     }
-  }, [cmUrl, accessToken]);
+  }, []);
 
   const enqueuePrefetch = useCallback((children: TreeNode[]) => {
     const toFetch = children
@@ -270,7 +266,7 @@ export function RiftContentTree({
       prefetchActiveRef.current = 0;
 
       try {
-        const sitecoreChildren = await fetchTreeChildren(cmUrl, accessToken, '/sitecore');
+        const sitecoreChildren = await fetchTreeChildren('/sitecore');
         if (cancelled) return;
 
         const contentN = sitecoreChildren.find((n) => n.name === 'content');
@@ -290,7 +286,7 @@ export function RiftContentTree({
 
           for (const seg of pathInfo.segments) {
             if (cancelled) return;
-            const children = await fetchTreeChildren(cmUrl, accessToken, currentPath);
+            const children = await fetchTreeChildren(currentPath);
             newCache.set(currentPath, children);
             onChildrenLoadedRef.current?.(currentPath, children);
 
@@ -305,7 +301,7 @@ export function RiftContentTree({
 
           if (cancelled) return;
           try {
-            const siteChildren = await fetchTreeChildren(cmUrl, accessToken, currentPath);
+            const siteChildren = await fetchTreeChildren(currentPath);
             newCache.set(currentPath, siteChildren);
             onChildrenLoadedRef.current?.(currentPath, siteChildren);
 
@@ -326,7 +322,7 @@ export function RiftContentTree({
 
           for (const seg of mediaSegments) {
             if (cancelled) return;
-            const children = await fetchTreeChildren(cmUrl, accessToken, currentPath);
+            const children = await fetchTreeChildren(currentPath);
             newCache.set(currentPath, children);
             onChildrenLoadedRef.current?.(currentPath, children);
 
@@ -344,7 +340,7 @@ export function RiftContentTree({
 
           if (cancelled) return;
           try {
-            const siteMediaChildren = await fetchTreeChildren(cmUrl, accessToken, currentPath);
+            const siteMediaChildren = await fetchTreeChildren(currentPath);
             newCache.set(currentPath, siteMediaChildren);
             onChildrenLoadedRef.current?.(currentPath, siteMediaChildren);
           } catch {}
@@ -372,7 +368,7 @@ export function RiftContentTree({
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmUrl, accessToken, rootPath, refreshKey]);
+  }, [rootPath, refreshKey]);
 
   const getVisibleChildPaths = useCallback(
     (node: TreeNode, isMedia: boolean): Set<string> | undefined => {
@@ -427,7 +423,7 @@ export function RiftContentTree({
       if (!childrenCacheRef.current.has(node.path)) {
         setLoadingNodes((prev) => new Set(prev).add(nodeId));
         try {
-          const children = await fetchTreeChildren(cmUrl, accessToken, node.path);
+          const children = await fetchTreeChildren(node.path);
           setChildrenCache((prev) => new Map(prev).set(node.path, children));
           onChildrenLoadedRef.current?.(node.path, children);
           enqueuePrefetch(children);
@@ -442,7 +438,7 @@ export function RiftContentTree({
         }
       }
     },
-    [cmUrl, accessToken, enqueuePrefetch]
+    [enqueuePrefetch]
   );
 
   const baseTreeRowProps = {

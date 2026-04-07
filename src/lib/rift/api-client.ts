@@ -4,15 +4,11 @@ interface FetchTreeResult {
   children: TreeNode[];
 }
 
-export async function fetchTreeChildren(
-  cmUrl: string,
-  accessToken: string,
-  parentPath: string
-): Promise<TreeNode[]> {
+export async function fetchTreeChildren(parentPath: string): Promise<TreeNode[]> {
   const res = await fetch('/api/rift/tree', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cmUrl, accessToken, parentPath }),
+    body: JSON.stringify({ parentPath }),
   });
 
   if (!res.ok) {
@@ -28,14 +24,11 @@ interface FetchSitesResult {
   sites: (SiteInfo & { collection: string })[];
 }
 
-export async function fetchSites(
-  cmUrl: string,
-  accessToken: string
-): Promise<(SiteInfo & { collection: string })[]> {
+export async function fetchSites(): Promise<(SiteInfo & { collection: string })[]> {
   const res = await fetch('/api/rift/sites', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cmUrl, accessToken }),
+    body: JSON.stringify({}),
   });
 
   if (!res.ok) {
@@ -47,11 +40,11 @@ export async function fetchSites(
   return result.sites;
 }
 
-export async function fetchProjects(accessToken: string): Promise<unknown[]> {
+export async function fetchProjects(): Promise<unknown[]> {
   const res = await fetch('/api/rift/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accessToken }),
+    body: JSON.stringify({}),
   });
 
   if (!res.ok) {
@@ -72,15 +65,13 @@ interface ItemFieldsResult {
 }
 
 export async function fetchItemFields(
-  cmUrl: string,
-  accessToken: string,
   itemPath: string,
   fieldNames: string[] = []
 ): Promise<ItemFieldsResult> {
   const res = await fetch('/api/rift/item-fields', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cmUrl, accessToken, itemPath, fieldNames }),
+    body: JSON.stringify({ itemPath, fieldNames }),
   });
 
   if (!res.ok) {
@@ -91,14 +82,11 @@ export async function fetchItemFields(
   return res.json();
 }
 
-export async function fetchEnvironments(
-  accessToken: string,
-  projectId: string
-): Promise<unknown[]> {
+export async function fetchEnvironments(projectId: string): Promise<unknown[]> {
   const res = await fetch('/api/rift/environments', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accessToken, projectId }),
+    body: JSON.stringify({ projectId }),
   });
 
   if (!res.ok) {

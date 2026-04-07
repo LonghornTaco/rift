@@ -26,7 +26,7 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
 
   useEffect(() => {
     setPresets(getPresets());
-    getEnvironments().then(setEnvironments);
+    setEnvironments(getEnvironments());
   }, []);
 
   const envName = (id?: string) => environments.find((e) => e.id === id)?.name ?? '';

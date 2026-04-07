@@ -74,7 +74,6 @@ export function RiftEnvironments() {
   const [clientSecret, setClientSecret] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [deployAccessToken, setDeployAccessToken] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [envOptions, setEnvOptions] = useState<EnvironmentOption[]>([]);
@@ -86,11 +85,11 @@ export function RiftEnvironments() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
-    getEnvironments().then(setEnvironments);
+    setEnvironments(getEnvironments());
   }, []);
 
   function refreshEnvironments() {
-    getEnvironments().then(setEnvironments);
+    setEnvironments(getEnvironments());
   }
 
   function resetAddModalState() {
@@ -99,7 +98,6 @@ export function RiftEnvironments() {
     setClientSecret('');
     setIsConnecting(false);
     setConnectError(null);
-    setDeployAccessToken(null);
     setProjects([]);
     setSelectedProjectId(null);
     setEnvOptions([]);
@@ -162,11 +160,10 @@ export function RiftEnvironments() {
     setIsConnecting(true);
     setConnectError(null);
     try {
-      const authResult = await authenticate(clientId, clientSecret);
-      const token = authResult.accessToken;
-      setDeployAccessToken(token);
+      // Create a temporary session for project/env discovery (envId/cmUrl/envName set later)
+      await authenticate(clientId, clientSecret, 'discovery', '', '');
 
-      const rawProjects = await fetchProjects(token);
+      const rawProjects = await fetchProjects();
       setProjects(parseProjectList(rawProjects));
       setStep('select');
     } catch (err: unknown) {
@@ -185,11 +182,11 @@ export function RiftEnvironments() {
       setEnvName('');
       setEnvCmUrl('');
 
-      if (!projectId || !deployAccessToken) return;
+      if (!projectId) return;
 
       setIsLoadingEnvironments(true);
       try {
-        const rawEnvs = await fetchEnvironments(deployAccessToken, projectId);
+        const rawEnvs = await fetchEnvironments(projectId);
         setEnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
@@ -197,7 +194,7 @@ export function RiftEnvironments() {
         setIsLoadingEnvironments(false);
       }
     },
-    [deployAccessToken]
+    []
   );
 
   function handleEnvironmentChange(envId: string) {
@@ -220,7 +217,7 @@ export function RiftEnvironments() {
       return next;
     });
     try {
-      await authenticate(env.clientId, env.clientSecret);
+      await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
       setConnectionStatuses((prev) => ({ ...prev, [env.id]: 'connected' }));
     } catch (err: unknown) {
       const message =

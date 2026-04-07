@@ -49,7 +49,6 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   const [step1Phase, setStep1Phase] = useState<CredentialPhase>('credentials');
   const [step1Connecting, setStep1Connecting] = useState(false);
   const [step1ConnectError, setStep1ConnectError] = useState<string | null>(null);
-  const [step1Token, setStep1Token] = useState<string | null>(null);
   const [step1Projects, setStep1Projects] = useState<ProjectOption[]>([]);
   const [step1SelectedProjectId, setStep1SelectedProjectId] = useState<string | null>(null);
   const [step1EnvOptions, setStep1EnvOptions] = useState<EnvironmentOption[]>([]);
@@ -63,7 +62,6 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   const [step2Phase, setStep2Phase] = useState<CredentialPhase>('credentials');
   const [step2Connecting, setStep2Connecting] = useState(false);
   const [step2ConnectError, setStep2ConnectError] = useState<string | null>(null);
-  const [step2Token, setStep2Token] = useState<string | null>(null);
   const [step2Projects, setStep2Projects] = useState<ProjectOption[]>([]);
   const [step2SelectedProjectId, setStep2SelectedProjectId] = useState<string | null>(null);
   const [step2EnvOptions, setStep2EnvOptions] = useState<EnvironmentOption[]>([]);
@@ -84,11 +82,9 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
     setStep1Connecting(true);
     setStep1ConnectError(null);
     try {
-      const authResult = await authenticate(clientId, clientSecret);
-      const token = authResult.accessToken;
-      setStep1Token(token);
+      await authenticate(clientId, clientSecret, 'discovery', '', '');
 
-      const rawProjects = await fetchProjects(token);
+      const rawProjects = await fetchProjects();
       setStep1Projects(parseProjectList(rawProjects));
       setStep1Phase('select');
     } catch (err: unknown) {
@@ -107,11 +103,11 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       setStep1EnvName('');
       setStep1CmUrl('');
 
-      if (!projectId || !step1Token) return;
+      if (!projectId) return;
 
       setStep1LoadingEnvs(true);
       try {
-        const rawEnvs = await fetchEnvironments(step1Token, projectId);
+        const rawEnvs = await fetchEnvironments(projectId);
         setStep1EnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
@@ -119,7 +115,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         setStep1LoadingEnvs(false);
       }
     },
-    [step1Token]
+    []
   );
 
   function handleStep1EnvChange(envId: string) {
@@ -163,11 +159,9 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
     setStep2Connecting(true);
     setStep2ConnectError(null);
     try {
-      const authResult = await authenticate(clientId, clientSecret);
-      const token = authResult.accessToken;
-      setStep2Token(token);
+      await authenticate(clientId, clientSecret, 'discovery', '', '');
 
-      const rawProjects = await fetchProjects(token);
+      const rawProjects = await fetchProjects();
       const parsed = parseProjectList(rawProjects);
       setStep2Projects(parsed);
       setStep2Phase('select');
@@ -177,7 +171,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         setStep2SelectedProjectId(savedProjectId);
         setStep2LoadingEnvs(true);
         try {
-          const rawEnvs = await fetchEnvironments(token, savedProjectId);
+          const rawEnvs = await fetchEnvironments(savedProjectId);
           setStep2EnvOptions(parseEnvironmentList(rawEnvs, savedProjectId));
         } catch (err: unknown) {
           console.error('[Rift] Failed to fetch environments:', err);
@@ -201,11 +195,11 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       setStep2EnvName('');
       setStep2CmUrl('');
 
-      if (!projectId || !step2Token) return;
+      if (!projectId) return;
 
       setStep2LoadingEnvs(true);
       try {
-        const rawEnvs = await fetchEnvironments(step2Token, projectId);
+        const rawEnvs = await fetchEnvironments(projectId);
         setStep2EnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
@@ -213,7 +207,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         setStep2LoadingEnvs(false);
       }
     },
-    [step2Token]
+    []
   );
 
   function handleStep2EnvChange(envId: string) {

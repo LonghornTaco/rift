@@ -64,7 +64,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     loadedPreset?.paths ?? []
   );
 
-  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [targetSessionId, setTargetSessionId] = useState<string | null>(null);
   const [sites, setSites] = useState<(SiteInfo & { collection: string })[]>([]);
   const [isLoadingSites, setIsLoadingSites] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -290,7 +291,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   }, [selectedPaths, loadedTreeNodes]);
 
   useEffect(() => {
-    getEnvironments().then(setEnvironments);
+    setEnvironments(getEnvironments());
   }, []);
 
   const handleEnvChange = useCallback(
@@ -298,7 +299,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       setSelectedEnvId(envId);
       setSelectedSiteRootPath(null);
       setSites([]);
-      setAccessToken(null);
+      setSessionId(null);
       setAuthError(null);
 
       if (!envId) return;
@@ -314,14 +315,14 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
       try {
         setIsLoadingSites(true);
-        const result = await authenticate(env.clientId, env.clientSecret);
-        setAccessToken(result.accessToken);
-        const fetchedSites = await fetchSites(env.cmUrl, result.accessToken);
+        const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+        setSessionId(result.sessionId);
+        const fetchedSites = await fetchSites();
         setSites(fetchedSites);
       } catch (err) {
         setAuthError(err instanceof Error ? err.message : 'Authentication failed');
         setSites([]);
-        setAccessToken(null);
+        setSessionId(null);
       } finally {
         setIsLoadingSites(false);
       }
@@ -378,7 +379,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   );
 
   const canStartMigration =
-    selectedEnvId && selectedSiteRootPath && selectedTargetEnvId && selectedPaths.length > 0 && !isMigrating;
+    selectedEnvId && selectedSiteRootPath && selectedTargetEnvId && sessionId && targetSessionId && selectedPaths.length > 0 && !isMigrating;
 
   const canSavePreset = selectedPaths.length > 0;
 
@@ -457,7 +458,19 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         {/* Target */}
         <div>
           <div className="text-xs font-semibold text-muted-foreground mb-0.5">TARGET ENVIRONMENT</div>
-          <Select value={selectedTargetEnvId ?? undefined} onValueChange={(val) => setSelectedTargetEnvId(val)} disabled={isMigrating}>
+          <Select value={selectedTargetEnvId ?? undefined} onValueChange={async (val) => {
+            setSelectedTargetEnvId(val);
+            setTargetSessionId(null);
+            const env = environments.find((e) => e.id === val);
+            if (env) {
+              try {
+                const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+                setTargetSessionId(result.sessionId);
+              } catch {
+                setAuthError('Failed to authenticate target environment');
+              }
+            }
+          }} disabled={isMigrating}>
             <SelectTrigger size="sm">
               <SelectValue placeholder="Select target..." />
             </SelectTrigger>
@@ -483,7 +496,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         <Button
           variant="outline"
           size="sm"
-          disabled={!accessToken || !selectedSiteRootPath || isMigrating}
+          disabled={!sessionId || !selectedSiteRootPath || isMigrating}
           onClick={() => setTreeRefreshKey((k) => k + 1)}
           title="Refresh content tree"
         >
@@ -652,9 +665,6 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 return 0;
               });
 
-              const src = sourceEnv;
-              const tgt = targetEnv;
-
               // Migrate a single path via streaming API
               async function migratePath(p: MigrationPath, index: number, suppressAuth: boolean) {
                 const isMedia = p.itemPath.toLowerCase().startsWith('/sitecore/media library');
@@ -671,16 +681,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                   headers: { 'Content-Type': 'application/json' },
                   signal: abortController.signal,
                   body: JSON.stringify({
-                    source: {
-                      cmUrl: src.cmUrl,
-                      clientId: src.clientId,
-                      clientSecret: src.clientSecret,
-                    },
-                    target: {
-                      cmUrl: tgt.cmUrl,
-                      clientId: tgt.clientId,
-                      clientSecret: tgt.clientSecret,
-                    },
+                    sourceSessionId: sessionId,
+                    targetSessionId: targetSessionId,
                     paths: [{ itemPath: p.itemPath, scope: p.scope }],
                     batchSize,
                     logLevel,
@@ -925,10 +927,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         >
           {/* Left panel — content tree */}
           <div className="flex-1 border-r border-border p-4 overflow-y-auto">
-            {accessToken && selectedSiteRootPath && selectedEnvId ? (
+            {sessionId && selectedSiteRootPath && selectedEnvId ? (
               <RiftContentTree
-                cmUrl={environments.find((e) => e.id === selectedEnvId)?.cmUrl ?? ''}
-                accessToken={accessToken}
                 rootPath={selectedSiteRootPath}
                 selectedPaths={selectedPaths}
                 onTogglePath={handleTogglePath}

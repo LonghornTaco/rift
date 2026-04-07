@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upstreamError } from '@/lib/rift/api-security';
+import { withSession } from '@/lib/rift/session-middleware';
 
 interface EnvironmentsRequestBody {
-  accessToken: string;
   projectId: string;
 }
 
 export async function POST(request: NextRequest) {
+  const sessionResult = await withSession(request);
+  if (!sessionResult.ok) return sessionResult.response;
+  const { session } = sessionResult;
+
+  const accessToken = session.accessToken;
+
   let body: EnvironmentsRequestBody;
   try {
     body = await request.json();
@@ -14,10 +20,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { accessToken, projectId } = body;
-  if (!accessToken || !projectId) {
+  const { projectId } = body;
+  if (!projectId) {
     return NextResponse.json(
-      { error: 'accessToken and projectId are required' },
+      { error: 'projectId is required' },
       { status: 400 }
     );
   }

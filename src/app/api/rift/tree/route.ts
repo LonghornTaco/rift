@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateCmUrl, validateItemPath, upstreamError, sanitizeError } from '@/lib/rift/api-security';
+import { withSession } from '@/lib/rift/session-middleware';
 
 interface TreeRequestBody {
-  cmUrl: string;
-  accessToken: string;
   parentPath: string;
 }
 
 export async function POST(request: NextRequest) {
+  const sessionResult = await withSession(request);
+  if (!sessionResult.ok) return sessionResult.response;
+  const { session } = sessionResult;
+
   let body: TreeRequestBody;
   try {
     body = await request.json();
@@ -15,10 +18,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { cmUrl, accessToken, parentPath } = body;
-  if (!cmUrl || !accessToken || !parentPath) {
+  const { parentPath } = body;
+  const cmUrl = session.cmUrl;
+  const accessToken = session.accessToken;
+
+  if (!parentPath) {
     return NextResponse.json(
-      { error: 'cmUrl, accessToken, and parentPath are required' },
+      { error: 'parentPath is required' },
       { status: 400 }
     );
   }

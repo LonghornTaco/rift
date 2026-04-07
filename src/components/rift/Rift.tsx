@@ -52,11 +52,9 @@ export function Rift() {
   const [feedbackSent, setFeedbackSent] = useState(false);
 
   useEffect(() => {
-    getEnvironments().then((envs) => {
-      if (envs.length === 0) {
-        setShowSetup(true);
-      }
-    });
+    if (getEnvironments().length === 0) {
+      setShowSetup(true);
+    }
     // Restore dark mode preference (default: dark)
     const saved = localStorage.getItem('rift:darkMode');
     if (saved === 'false') {

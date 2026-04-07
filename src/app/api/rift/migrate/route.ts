@@ -1,21 +1,14 @@
 import { NextRequest } from 'next/server';
 import { validateCmUrl, validateItemPath, getClientIp } from '@/lib/rift/api-security';
 import { logOperation, logError } from '@/lib/rift/logger';
+import { getSession, updateSessionToken } from '@/lib/rift/session-store';
 
 // Allow up to 5 minutes for large migrations (Vercel Pro)
 export const maxDuration = 300;
 
 interface MigrateRequestBody {
-  source: {
-    cmUrl: string;
-    clientId: string;
-    clientSecret: string;
-  };
-  target: {
-    cmUrl: string;
-    clientId: string;
-    clientSecret: string;
-  };
+  sourceSessionId: string;
+  targetSessionId: string;
   paths: Array<{
     itemPath: string;
     scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants' | 'ChildrenOnly' | 'DescendantsOnly';
@@ -29,6 +22,7 @@ interface AuthContext {
   token: string;
   clientId: string;
   clientSecret: string;
+  sessionId?: string;
 }
 
 interface FieldData {
@@ -112,6 +106,10 @@ async function authPost(url: string, body: string, auth: AuthContext): Promise<R
   let res = await fetch(url, { method: 'POST', headers: authHeaders(auth.token), body });
   if (res.status === 401 || res.status === 403) {
     auth.token = await getAccessToken(auth.clientId, auth.clientSecret);
+    // Persist refreshed token back to session store
+    if (auth.sessionId) {
+      await updateSessionToken(auth.sessionId, auth.token).catch(() => {});
+    }
     res = await fetch(url, { method: 'POST', headers: authHeaders(auth.token), body });
   }
   return res;
@@ -767,19 +765,32 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
 
-  const { source, target, paths, batchSize: requestBatchSize, logLevel: requestLogLevel, recycleOrphans: requestRecycleOrphans } = body;
+  const { sourceSessionId, targetSessionId, paths, batchSize: requestBatchSize, logLevel: requestLogLevel, recycleOrphans: requestRecycleOrphans } = body;
 
   // Validate required fields
-  if (!source?.cmUrl || !source?.clientId || !target?.cmUrl || !target?.clientId || !paths?.length) {
+  if (!sourceSessionId || !targetSessionId || !paths?.length) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
   }
 
+  // Look up both sessions from server-side store
+  const [sourceSession, targetSession] = await Promise.all([
+    getSession(sourceSessionId),
+    getSession(targetSessionId),
+  ]);
+
+  if (!sourceSession) {
+    return new Response(JSON.stringify({ error: 'Source session expired. Please reconnect.' }), { status: 401 });
+  }
+  if (!targetSession) {
+    return new Response(JSON.stringify({ error: 'Target session expired. Please reconnect.' }), { status: 401 });
+  }
+
   // Validate cmUrls (SSRF prevention)
-  const sourceCmError = validateCmUrl(source.cmUrl);
+  const sourceCmError = validateCmUrl(sourceSession.cmUrl);
   if (sourceCmError) {
     return new Response(JSON.stringify({ error: `Source: ${sourceCmError}` }), { status: 400 });
   }
-  const targetCmError = validateCmUrl(target.cmUrl);
+  const targetCmError = validateCmUrl(targetSession.cmUrl);
   if (targetCmError) {
     return new Response(JSON.stringify({ error: `Target: ${targetCmError}` }), { status: 400 });
   }
@@ -809,6 +820,10 @@ export async function POST(request: NextRequest) {
     return 0;
   });
 
+  // Capture as non-null (validated above) for use inside the stream closure
+  const srcSession = sourceSession!;
+  const tgtSession = targetSession!;
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -819,14 +834,20 @@ export async function POST(request: NextRequest) {
       try {
         logOperation('/api/rift/migrate', 'migration_start', `${paths.length} paths`, { clientIp, pathCount: paths.length, batchSize, recycleOrphans });
 
-        // Auth to both environments (mutable token holders for auto-refresh)
+        // Build auth contexts from server-side sessions (tokens already obtained)
         send({ type: 'status', message: 'Authenticating...' });
-        const sourceAuth: AuthContext = { token: '', clientId: source.clientId, clientSecret: source.clientSecret };
-        const targetAuth: AuthContext = { token: '', clientId: target.clientId, clientSecret: target.clientSecret };
-        [sourceAuth.token, targetAuth.token] = await Promise.all([
-          getAccessToken(source.clientId, source.clientSecret),
-          getAccessToken(target.clientId, target.clientSecret),
-        ]);
+        const sourceAuth: AuthContext = {
+          token: srcSession.accessToken,
+          clientId: srcSession.clientId,
+          clientSecret: srcSession.clientSecret,
+          sessionId: sourceSessionId,
+        };
+        const targetAuth: AuthContext = {
+          token: tgtSession.accessToken,
+          clientId: tgtSession.clientId,
+          clientSecret: tgtSession.clientSecret,
+          sessionId: targetSessionId,
+        };
         send({ type: 'status', message: 'Authenticated to both environments.' });
 
         let totalSucceeded = 0;
@@ -863,7 +884,7 @@ export async function POST(request: NextRequest) {
 
           let items: Record<string, unknown>[];
           try {
-            items = await pullItemData(source.cmUrl, sourceAuth, itemPath, 'ITEM_AND_CHILDREN');
+            items = await pullItemData(srcSession.cmUrl, sourceAuth, itemPath, 'ITEM_AND_CHILDREN');
             if (skipRoot) {
               items = items.filter((item) => (item.path as string) !== itemPath);
             }
@@ -881,7 +902,7 @@ export async function POST(request: NextRequest) {
           // Pull full target data for comparison-based updates
           let targetDataMap: Map<string, Record<string, unknown>>;
           try {
-            targetDataMap = await pullTargetData(target.cmUrl, targetAuth, itemPath, 'ITEM_AND_CHILDREN');
+            targetDataMap = await pullTargetData(tgtSession.cmUrl, targetAuth, itemPath, 'ITEM_AND_CHILDREN');
             if (skipRoot) {
               for (const [id, item] of targetDataMap) {
                 if ((item.path as string) === itemPath) {
@@ -894,12 +915,12 @@ export async function POST(request: NextRequest) {
             targetDataMap = new Map();
           }
 
-          accumulateResult(await processAndPushItems(items, targetDataMap, target.cmUrl, targetAuth, send, label, batchSize, logLevel, recycleOrphans));
+          accumulateResult(await processAndPushItems(items, targetDataMap, tgtSession.cmUrl, targetAuth, send, label, batchSize, logLevel, recycleOrphans));
 
           // Recurse into children that have their own children (parallel, limited concurrency)
           let children: { path: string; hasChildren: boolean }[];
           try {
-            children = await fetchChildPaths(source.cmUrl, sourceAuth, itemPath);
+            children = await fetchChildPaths(srcSession.cmUrl, sourceAuth, itemPath);
           } catch {
             children = [];
           }
@@ -932,7 +953,7 @@ export async function POST(request: NextRequest) {
 
             let items: Record<string, unknown>[];
             try {
-              items = await pullItemData(source.cmUrl, sourceAuth, p.itemPath, scope);
+              items = await pullItemData(srcSession.cmUrl, sourceAuth, p.itemPath, scope);
               // For ChildrenOnly / DescendantsOnly, strip the root item
               if (excludeRoot) {
                 items = items.filter((item) => (item.path as string) !== p.itemPath);
@@ -951,7 +972,7 @@ export async function POST(request: NextRequest) {
             // Pull full target data for comparison-based updates
             let targetDataMap: Map<string, Record<string, unknown>>;
             try {
-              targetDataMap = await pullTargetData(target.cmUrl, targetAuth, p.itemPath, scope);
+              targetDataMap = await pullTargetData(tgtSession.cmUrl, targetAuth, p.itemPath, scope);
               if (excludeRoot) {
                 // Remove root item from target map so it's not recycled
                 for (const [id, item] of targetDataMap) {
@@ -965,7 +986,7 @@ export async function POST(request: NextRequest) {
               targetDataMap = new Map();
             }
 
-            accumulateResult(await processAndPushItems(items, targetDataMap, target.cmUrl, targetAuth, send, label, batchSize, logLevel, recycleOrphans));
+            accumulateResult(await processAndPushItems(items, targetDataMap, tgtSession.cmUrl, targetAuth, send, label, batchSize, logLevel, recycleOrphans));
           }
         }
 
