@@ -407,7 +407,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
 
   const isStep1 = wizardStep === 1;
   const subtitle = isStep1
-    ? "Let's set up your environments. Start with your source environment \u2014 typically Production."
+    ? "Let's set up your environments. Start with your source environment."
     : "Now add a target environment \u2014 where you'll push content to (e.g. UAT or DEV).";
 
   const canSaveStep1 = step1Phase === 'select' && step1EnvName && step1CmUrl;
