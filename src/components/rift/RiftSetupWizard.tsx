@@ -4,7 +4,8 @@ import { useState, useCallback } from 'react';
 import type { RiftEnvironment } from '@/lib/rift/types';
 import { saveEnvironment } from '@/lib/rift/storage';
 import { authenticate } from '@/lib/rift/sitecore-auth';
-import { fetchProjects, fetchEnvironments } from '@/lib/rift/api-client';
+import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList } from '@/lib/rift/api-client';
+import type { ProjectOption, EnvironmentOption } from '@/lib/rift/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,28 +29,6 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-
-/** Defensively extract a string property from an unknown object */
-function getString(obj: unknown, ...keys: string[]): string {
-  if (obj && typeof obj === 'object') {
-    const rec = obj as Record<string, unknown>;
-    for (const key of keys) {
-      if (typeof rec[key] === 'string') return rec[key] as string;
-    }
-  }
-  return '';
-}
-
-interface ProjectOption {
-  id: string;
-  name: string;
-}
-
-interface EnvironmentOption {
-  id: string;
-  name: string;
-  host: string;
-}
 
 interface RiftSetupWizardProps {
   onComplete: () => void;
@@ -99,40 +78,6 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   const [savedClientSecret, setSavedClientSecret] = useState('');
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
 
-  function parseProjectList(rawProjects: unknown): ProjectOption[] {
-    const projectList = Array.isArray(rawProjects)
-      ? rawProjects
-      : Array.isArray((rawProjects as Record<string, unknown>)?.data)
-        ? ((rawProjects as Record<string, unknown>).data as unknown[])
-        : [];
-
-    const parsed: ProjectOption[] = [];
-    for (const p of projectList) {
-      const id = getString(p, 'id');
-      const name = getString(p, 'name');
-      if (id) parsed.push({ id, name: name || id });
-    }
-    return parsed;
-  }
-
-  function parseEnvList(rawEnvs: unknown): EnvironmentOption[] {
-    const envList = Array.isArray(rawEnvs)
-      ? rawEnvs
-      : Array.isArray((rawEnvs as Record<string, unknown>)?.data)
-        ? ((rawEnvs as Record<string, unknown>).data as unknown[])
-        : [];
-
-    const parsed: EnvironmentOption[] = [];
-    for (const e of envList) {
-      const id = getString(e, 'id');
-      const name = getString(e, 'name');
-      const host = getString(e, 'host');
-      const cmUrl = host ? `https://${host}` : '';
-      if (id) parsed.push({ id, name: name || id, host: cmUrl });
-    }
-    return parsed;
-  }
-
   // --- Step 1 handlers ---
 
   async function handleStep1Connect() {
@@ -167,7 +112,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       setStep1LoadingEnvs(true);
       try {
         const rawEnvs = await fetchEnvironments(step1Token, projectId);
-        setStep1EnvOptions(parseEnvList(rawEnvs));
+        setStep1EnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
       } finally {
@@ -233,7 +178,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
         setStep2LoadingEnvs(true);
         try {
           const rawEnvs = await fetchEnvironments(token, savedProjectId);
-          setStep2EnvOptions(parseEnvList(rawEnvs));
+          setStep2EnvOptions(parseEnvironmentList(rawEnvs, savedProjectId));
         } catch (err: unknown) {
           console.error('[Rift] Failed to fetch environments:', err);
         } finally {
@@ -261,7 +206,7 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
       setStep2LoadingEnvs(true);
       try {
         const rawEnvs = await fetchEnvironments(step2Token, projectId);
-        setStep2EnvOptions(parseEnvList(rawEnvs));
+        setStep2EnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
       } finally {

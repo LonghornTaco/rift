@@ -108,3 +108,71 @@ export async function fetchEnvironments(
 
   return res.json();
 }
+
+// --- Shared parsing helpers for Deploy API responses ---
+
+/** Defensively extract a string property from an unknown object */
+function getString(obj: unknown, ...keys: string[]): string {
+  if (obj && typeof obj === 'object') {
+    const rec = obj as Record<string, unknown>;
+    for (const key of keys) {
+      if (typeof rec[key] === 'string') return rec[key] as string;
+    }
+  }
+  return '';
+}
+
+export interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+export interface EnvironmentOption {
+  id: string;
+  name: string;
+  host: string;
+}
+
+/** Parse raw Deploy API project response into ProjectOption[] */
+export function parseProjectList(rawProjects: unknown): ProjectOption[] {
+  const projectList = Array.isArray(rawProjects)
+    ? rawProjects
+    : Array.isArray((rawProjects as Record<string, unknown>)?.data)
+      ? ((rawProjects as Record<string, unknown>).data as unknown[])
+      : [];
+
+  const parsed: ProjectOption[] = [];
+  for (const p of projectList) {
+    const id = getString(p, 'id');
+    const name = getString(p, 'name');
+    if (id) parsed.push({ id, name: name || id });
+  }
+  return parsed;
+}
+
+/**
+ * Parse raw Deploy API environment response into EnvironmentOption[].
+ * Filters to only CM environments belonging to the specified project,
+ * since the Deploy API ignores the projectId query parameter.
+ */
+export function parseEnvironmentList(rawEnvs: unknown, forProjectId: string): EnvironmentOption[] {
+  const envList = Array.isArray(rawEnvs)
+    ? rawEnvs
+    : Array.isArray((rawEnvs as Record<string, unknown>)?.data)
+      ? ((rawEnvs as Record<string, unknown>).data as unknown[])
+      : [];
+
+  const parsed: EnvironmentOption[] = [];
+  for (const e of envList) {
+    const id = getString(e, 'id');
+    const name = getString(e, 'name');
+    const host = getString(e, 'host');
+    const envProjectId = getString(e, 'projectId');
+    const envType = getString(e, 'type');
+    if (envProjectId && envProjectId !== forProjectId) continue;
+    if (envType && envType !== 'cm') continue;
+    const cmUrl = host ? `https://${host}` : '';
+    if (id) parsed.push({ id, name: name || id, host: cmUrl });
+  }
+  return parsed;
+}

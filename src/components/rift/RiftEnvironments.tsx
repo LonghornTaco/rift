@@ -8,7 +8,8 @@ import {
   deleteEnvironment,
 } from '@/lib/rift/storage';
 import { authenticate } from '@/lib/rift/sitecore-auth';
-import { fetchProjects, fetchEnvironments } from '@/lib/rift/api-client';
+import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList } from '@/lib/rift/api-client';
+import type { ProjectOption, EnvironmentOption } from '@/lib/rift/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,29 +53,7 @@ function maskClientId(clientId: string): string {
   return `****-****-${last4}`;
 }
 
-/** Defensively extract a string property from an unknown object */
-function getString(obj: unknown, ...keys: string[]): string {
-  if (obj && typeof obj === 'object') {
-    const rec = obj as Record<string, unknown>;
-    for (const key of keys) {
-      if (typeof rec[key] === 'string') return rec[key] as string;
-    }
-  }
-  return '';
-}
-
 type ModalStep = 'credentials' | 'select';
-
-interface ProjectOption {
-  id: string;
-  name: string;
-}
-
-interface EnvironmentOption {
-  id: string;
-  name: string;
-  host: string;
-}
 
 export function RiftEnvironments() {
   const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
@@ -188,22 +167,7 @@ export function RiftEnvironments() {
       setDeployAccessToken(token);
 
       const rawProjects = await fetchProjects(token);
-      console.log('[Rift] Projects response:', rawProjects);
-
-      // Deploy API wraps results in { data: [...] }
-      const projectList = Array.isArray(rawProjects)
-        ? rawProjects
-        : Array.isArray((rawProjects as Record<string, unknown>)?.data)
-          ? (rawProjects as Record<string, unknown>).data as unknown[]
-          : [];
-
-      const parsed: ProjectOption[] = [];
-      for (const p of projectList) {
-        const id = getString(p, 'id');
-        const name = getString(p, 'name');
-        if (id) parsed.push({ id, name: name || id });
-      }
-      setProjects(parsed);
+      setProjects(parseProjectList(rawProjects));
       setStep('select');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Connection failed';
@@ -226,31 +190,7 @@ export function RiftEnvironments() {
       setIsLoadingEnvironments(true);
       try {
         const rawEnvs = await fetchEnvironments(deployAccessToken, projectId);
-        console.log('[Rift] Environments response:', rawEnvs);
-
-        // Deploy API wraps results in { data: [...] }
-        const envList = Array.isArray(rawEnvs)
-          ? rawEnvs
-          : Array.isArray((rawEnvs as Record<string, unknown>)?.data)
-            ? (rawEnvs as Record<string, unknown>).data as unknown[]
-            : [];
-
-        const parsed: EnvironmentOption[] = [];
-        for (const e of envList) {
-          const id = getString(e, 'id');
-          const name = getString(e, 'name');
-          const host = getString(e, 'host');
-          const envProjectId = getString(e, 'projectId');
-          const envType = getString(e, 'type');
-          // Filter: only CM environments belonging to the selected project
-          // The Deploy API ignores the projectId query param, so we filter client-side
-          if (envProjectId && envProjectId !== projectId) continue;
-          if (envType && envType !== 'cm') continue;
-          // host is just the hostname (e.g. "xmc-...sitecorecloud.io"), prepend https://
-          const cmUrl = host ? `https://${host}` : '';
-          if (id) parsed.push({ id, name: name || id, host: cmUrl });
-        }
-        setEnvOptions(parsed);
+        setEnvOptions(parseEnvironmentList(rawEnvs, projectId));
       } catch (err: unknown) {
         console.error('[Rift] Failed to fetch environments:', err);
       } finally {
