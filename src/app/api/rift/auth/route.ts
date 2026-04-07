@@ -64,14 +64,24 @@ export async function POST(request: NextRequest) {
     const accessToken = tokenData.access_token;
 
     // Create server-side session
-    const sessionId = await createSession({
-      envId: envId || 'unknown',
-      clientId,
-      clientSecret,
-      accessToken,
-      cmUrl: cmUrl || '',
-      envName: envName || '',
-    });
+    let sessionId: string;
+    try {
+      sessionId = await createSession({
+        envId: envId || 'unknown',
+        clientId,
+        clientSecret,
+        accessToken,
+        cmUrl: cmUrl || '',
+        envName: envName || '',
+      });
+    } catch (sessionErr) {
+      const detail = sessionErr instanceof Error ? sessionErr.message : String(sessionErr);
+      logError('/api/rift/auth', 'session_create_error', detail, { clientIp });
+      return NextResponse.json(
+        { error: 'Failed to create session' },
+        { status: 500 }
+      );
+    }
 
     // Return response with session cookie
     const response = NextResponse.json({

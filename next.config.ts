@@ -4,6 +4,11 @@ const isDev = process.env.NODE_ENV === 'development';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  serverExternalPackages: [
+    '@azure/identity',
+    '@azure/keyvault-keys',
+    '@azure/data-tables',
+  ],
   pageExtensions: ['ts', 'tsx', 'js', 'jsx'],
   headers: async () => [
     {
