@@ -1,7 +1,7 @@
 import { DefaultAzureCredential } from '@azure/identity';
 import { KeyClient, CryptographyClient } from '@azure/keyvault-keys';
 import { TableClient } from '@azure/data-tables';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, createCipheriv, createDecipheriv } from 'crypto';
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 const KEY_NAME = 'rift-session-key';
@@ -62,16 +62,42 @@ async function getCryptoClient(): Promise<CryptographyClient> {
   return cryptoClient;
 }
 
+/** Envelope encryption: AES-256-GCM locally, RSA-OAEP wraps the AES key via Key Vault */
 async function encryptString(plaintext: string): Promise<string> {
+  const aesKey = randomBytes(32);
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', aesKey, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  // Wrap the AES key with RSA in Key Vault
   const crypto = await getCryptoClient();
-  const result = await crypto.encrypt('RSA-OAEP', Buffer.from(plaintext, 'utf-8'));
-  return Buffer.from(result.result).toString('base64');
+  const wrapped = await crypto.encrypt('RSA-OAEP', aesKey);
+
+  // Pack: wrappedKey + iv + authTag + ciphertext
+  const payload = JSON.stringify({
+    k: Buffer.from(wrapped.result).toString('base64'),
+    iv: iv.toString('base64'),
+    t: authTag.toString('base64'),
+    d: encrypted.toString('base64'),
+  });
+  return Buffer.from(payload).toString('base64');
 }
 
-async function decryptString(ciphertext: string): Promise<string> {
+async function decryptString(envelope: string): Promise<string> {
+  const payload = JSON.parse(Buffer.from(envelope, 'base64').toString('utf-8'));
+  const wrappedKey = Buffer.from(payload.k, 'base64');
+  const iv = Buffer.from(payload.iv, 'base64');
+  const authTag = Buffer.from(payload.t, 'base64');
+  const ciphertext = Buffer.from(payload.d, 'base64');
+
+  // Unwrap the AES key via Key Vault
   const crypto = await getCryptoClient();
-  const result = await crypto.decrypt('RSA-OAEP', Buffer.from(ciphertext, 'base64'));
-  return Buffer.from(result.result).toString('utf-8');
+  const unwrapped = await crypto.decrypt('RSA-OAEP', wrappedKey);
+
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(unwrapped.result), iv);
+  decipher.setAuthTag(authTag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf-8');
 }
 
 export async function createSession(input: SessionCreateInput): Promise<string> {
