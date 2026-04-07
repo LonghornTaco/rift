@@ -76,10 +76,10 @@ export async function getSessionForEnv(
 
 /** Build Set-Cookie header value for a session */
 export function buildSessionCookie(sessionId: string): string {
-  return `${SESSION_COOKIE}=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/api/rift`;
+  return `${SESSION_COOKIE}=${sessionId}; HttpOnly; Secure; SameSite=None; Path=/api/rift`;
 }
 
 /** Build Set-Cookie header value to clear the session */
 export function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/api/rift; Max-Age=0`;
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=None; Path=/api/rift; Max-Age=0`;
 }
