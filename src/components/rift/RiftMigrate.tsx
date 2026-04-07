@@ -916,6 +916,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 onTogglePath={handleTogglePath}
                 inheritedPaths={inheritedPaths}
                 onChildrenLoaded={handleChildrenLoaded}
+                disabled={isMigrating}
               />
             ) : (
               <div className="text-sm text-muted-foreground">

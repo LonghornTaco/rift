@@ -130,6 +130,7 @@ interface RiftContentTreeProps {
   onTogglePath: (node: TreeNode) => void;
   inheritedPaths: Set<string>;
   onChildrenLoaded?: (parentPath: string, children: TreeNode[]) => void;
+  disabled?: boolean;
 }
 
 export function RiftContentTree({
@@ -140,12 +141,14 @@ export function RiftContentTree({
   onTogglePath,
   inheritedPaths,
   onChildrenLoaded,
+  disabled,
 }: RiftContentTreeProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [childrenCache, setChildrenCache] = useState<Map<string, TreeNode[]>>(new Map());
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const prefetchQueueRef = useRef<string[]>([]);
   const prefetchActiveRef = useRef(0);
@@ -368,7 +371,7 @@ export function RiftContentTree({
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmUrl, accessToken, rootPath]);
+  }, [cmUrl, accessToken, rootPath, refreshKey]);
 
   const getVisibleChildPaths = useCallback(
     (node: TreeNode, isMedia: boolean): Set<string> | undefined => {
@@ -538,13 +541,31 @@ export function RiftContentTree({
         <div className="text-xs font-semibold text-muted-foreground">
           CONTENT TREE
         </div>
-        <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
-          <Checkbox
-            checked={showHiddenItems}
-            onCheckedChange={(checked) => setShowHiddenItems(checked === true)}
-          />
-          Show hidden items
-        </label>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            disabled={disabled || isLoading}
+            className={cn(
+              'text-muted-foreground hover:text-foreground transition-colors',
+              (disabled || isLoading) && 'opacity-40 pointer-events-none'
+            )}
+            title="Refresh tree"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+          </button>
+          <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={showHiddenItems}
+              onCheckedChange={(checked) => setShowHiddenItems(checked === true)}
+            />
+            Show hidden items
+          </label>
+        </div>
       </div>
 
       {isLoading ? (
