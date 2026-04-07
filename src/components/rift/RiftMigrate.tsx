@@ -872,7 +872,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                   onChange={(e) => setPresetName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && presetName.trim()) confirmSavePreset(); }}
                   autoFocus
-                  placeholder="e.g. Full MCC Content"
+                  placeholder="e.g. Full Site Content"
                 />
               </div>
 
