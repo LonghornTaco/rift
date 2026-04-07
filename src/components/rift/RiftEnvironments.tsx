@@ -240,6 +240,12 @@ export function RiftEnvironments() {
           const id = getString(e, 'id');
           const name = getString(e, 'name');
           const host = getString(e, 'host');
+          const envProjectId = getString(e, 'projectId');
+          const envType = getString(e, 'type');
+          // Filter: only CM environments belonging to the selected project
+          // The Deploy API ignores the projectId query param, so we filter client-side
+          if (envProjectId && envProjectId !== projectId) continue;
+          if (envType && envType !== 'cm') continue;
           // host is just the hostname (e.g. "xmc-...sitecorecloud.io"), prepend https://
           const cmUrl = host ? `https://${host}` : '';
           if (id) parsed.push({ id, name: name || id, host: cmUrl });
