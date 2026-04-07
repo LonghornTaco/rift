@@ -37,6 +37,8 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
   const logRef = useRef<HTMLDivElement>(null);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [copyLabel, setCopyLabel] = useState('Copy Log');
+  const [failuresOpen, setFailuresOpen] = useState(false);
+  const [copyFailuresLabel, setCopyFailuresLabel] = useState('Copy Failures');
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
@@ -132,6 +134,16 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
       }
     }
     return Array.from(map.values());
+  }, [messages]);
+
+  const failures = useMemo(() => {
+    return messages
+      .filter((m) => m.type === 'item-failure')
+      .map((m) => ({
+        itemName: m.itemName as string,
+        operation: m.operation as string,
+        reason: m.reason as string,
+      }));
   }, [messages]);
 
   const getMessageColor = (type: string) => {
@@ -285,6 +297,63 @@ export function RiftProgressOverlay({ isActive, messages, onClose, onCancel, par
           </>
         )}
       </div>
+
+      {/* Collapsible failures section */}
+      {failures.length > 0 && (
+        <div className="shrink-0 border-b border-border">
+          <button
+            onClick={() => setFailuresOpen((prev) => !prev)}
+            className="w-full px-4 py-1.5 text-xs font-medium text-destructive hover:text-red-400 text-left flex items-center gap-1 cursor-pointer"
+          >
+            <span className="inline-block transition-transform" style={{ transform: failuresOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+              {'\u25B6'}
+            </span>
+            Failures ({failures.length} items)
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto text-xs h-5 px-2"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const lines = failures.map((f) =>
+                  `${f.itemName} [${f.operation}] — ${f.reason}`
+                );
+                const content = [
+                  `Rift Migration Failures — ${new Date().toLocaleString()}`,
+                  `Total: ${failures.length} items`,
+                  '---',
+                  ...lines,
+                ].join('\n');
+
+                try {
+                  await navigator.clipboard.writeText(content);
+                  setCopyFailuresLabel('Copied!');
+                  setTimeout(() => setCopyFailuresLabel('Copy Failures'), 2000);
+                } catch {
+                  const w = window.open('', '_blank');
+                  if (w) {
+                    w.document.write(`<pre>${content.replace(/</g, '&lt;')}</pre>`);
+                    w.document.close();
+                  }
+                }
+              }}
+            >
+              {copyFailuresLabel}
+            </Button>
+          </button>
+          {failuresOpen && (
+            <div className="px-4 py-2 max-h-40 overflow-y-auto font-mono text-xs space-y-0.5">
+              {failures.map((f, i) => (
+                <div key={i} className="text-destructive">
+                  <span className="text-muted-foreground mr-1">[{f.operation}]</span>
+                  <span className="font-medium">{f.itemName}</span>
+                  <span className="text-destructive/80"> — {f.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Collapsible details log */}
       <div className="shrink-0">
