@@ -76,9 +76,11 @@ export async function POST(request: NextRequest) {
       });
     } catch (sessionErr) {
       const detail = sessionErr instanceof Error ? sessionErr.message : String(sessionErr);
+      const stack = sessionErr instanceof Error ? sessionErr.stack : undefined;
       logError('/api/rift/auth', 'session_create_error', detail, { clientIp });
+      console.error('[session-create-error]', detail, stack);
       return NextResponse.json(
-        { error: 'Failed to create session' },
+        { error: 'Failed to create session', detail },
         { status: 500 }
       );
     }
@@ -95,8 +97,9 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     logError('/api/rift/auth', 'auth_connection_error', detail, { clientIp });
+    console.error('[auth-connection-error]', detail);
     return NextResponse.json(
-      { error: 'Failed to connect to authentication server' },
+      { error: 'Failed to connect to authentication server', detail },
       { status: 502 }
     );
   }
