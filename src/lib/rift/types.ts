@@ -2,9 +2,8 @@ export interface RiftEnvironment {
   id: string;
   name: string;
   cmUrl: string;
-  clientId: string;
-  clientSecret: string;
   allowWrite: boolean;
+  hasStoredCredentials?: boolean; // UI hint — server is source of truth
 }
 
 export interface MigrationPath {
