@@ -50,14 +50,20 @@ export async function transferPath(
       body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId },
     },
   } as any);
-  // Create matching transfer on target so it can receive chunks
+  // Create matching transfer on target so it can receive chunks.
+  // Use the same transferId — the target needs this to accept chunk uploads.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await client.mutate('xmc.contentTransfer.createContentTransfer', {
+  const targetCreate = await client.mutate('xmc.contentTransfer.createContentTransfer', {
     params: {
       query: { sitecoreContextId: targetContextId },
-      body: { configuration: { dataTrees: [] }, transferId },
+      body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId },
     },
   } as any);
+  // Log if target create failed (SDK wraps errors as success with error property)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((targetCreate.data as any)?.error) {
+    console.warn('[Rift] Target createContentTransfer error:', (targetCreate.data as any).error);
+  }
 
   try {
     // Phase 2: Poll until export is ready (GET /content/v1/transfers/{transferId}/status)
