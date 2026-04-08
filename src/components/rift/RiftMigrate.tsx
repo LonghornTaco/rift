@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RiftPreset, RiftEnvironment, MigrationPath, MigrationHistoryEntry, MigrationLogLevel, TreeNode, SiteInfo, DEFAULT_SETTINGS } from '@/lib/rift/types';
-import { getEnvironments, getPresets, savePreset, addHistoryEntry, getSettings, saveSettings } from '@/lib/rift/storage';
+import { getEnvironments, getPresets, savePreset, addHistoryEntry, getSettings, saveSettings, saveEnvironment } from '@/lib/rift/storage';
 import { authenticate, authenticateFromStored } from '@/lib/rift/sitecore-auth';
-import { fetchSites } from '@/lib/rift/api-client';
+import { fetchSites, storeCredentialsApi } from '@/lib/rift/api-client';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
@@ -28,6 +28,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -95,6 +96,16 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [confirmingOverwrite, setConfirmingOverwrite] = useState(false);
   const [existingPresets, setExistingPresets] = useState<RiftPreset[]>([]);
   const [isRestoringPreset, setIsRestoringPreset] = useState(!!loadedPreset?.sourceEnvId);
+
+  const [credPromptEnvId, setCredPromptEnvId] = useState<string | null>(null);
+  const [credPromptClientId, setCredPromptClientId] = useState('');
+  const [credPromptClientSecret, setCredPromptClientSecret] = useState('');
+  const [credPromptError, setCredPromptError] = useState<string | null>(null);
+  const [isCredPrompting, setIsCredPrompting] = useState(false);
+  const [credPromptRemember, setCredPromptRemember] = useState(false);
+  const [showCredRememberModal, setShowCredRememberModal] = useState(false);
+  const [credPromptRole, setCredPromptRole] = useState<'source' | 'target'>('source');
+
   // Track whether we're still waiting for the full workspace to be ready
   const isWorkspaceLoading = isRestoringPreset || (!!loadedPreset?.sourceEnvId && isLoadingSites) || (!!loadedPreset?.siteRootPath && pendingSiteRootPath !== null);
 
@@ -319,8 +330,12 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         if (env.hasStoredCredentials) {
           result = await authenticateFromStored(env.id, env.cmUrl, env.name);
         } else {
-          // No stored credentials — need credential prompt
-          setAuthError('No credentials available. Please reconnect this environment.');
+          setCredPromptEnvId(env.id);
+          setCredPromptRole('source');
+          setCredPromptClientId('');
+          setCredPromptClientSecret('');
+          setCredPromptError(null);
+          setCredPromptRemember(false);
           return;
         }
         setSessionId(result.sessionId);
@@ -349,7 +364,12 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         if (env.hasStoredCredentials) {
           result = await authenticateFromStored(env.id, env.cmUrl, env.name);
         } else {
-          setAuthError('No credentials available for target. Please reconnect this environment.');
+          setCredPromptEnvId(env.id);
+          setCredPromptRole('target');
+          setCredPromptClientId('');
+          setCredPromptClientSecret('');
+          setCredPromptError(null);
+          setCredPromptRemember(false);
           return;
         }
         setTargetSessionId(result.sessionId);
@@ -358,6 +378,45 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       }
     }
   }, []);
+
+  async function handleCredPromptSubmit() {
+    if (!credPromptEnvId) return;
+    setIsCredPrompting(true);
+    setCredPromptError(null);
+
+    const envs = getEnvironments();
+    const env = envs.find((e) => e.id === credPromptEnvId);
+    if (!env) return;
+
+    try {
+      const result = await authenticate(
+        credPromptClientId,
+        credPromptClientSecret,
+        env.id,
+        env.cmUrl,
+        env.name
+      );
+
+      if (credPromptRemember) {
+        await storeCredentialsApi(env.id, credPromptClientId, credPromptClientSecret);
+        saveEnvironment({ ...env, hasStoredCredentials: true });
+      }
+
+      if (credPromptRole === 'source') {
+        setSessionId(result.sessionId);
+        const fetchedSites = await fetchSites();
+        setSites(fetchedSites);
+      } else {
+        setTargetSessionId(result.sessionId);
+      }
+
+      setCredPromptEnvId(null);
+    } catch (err) {
+      setCredPromptError(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setIsCredPrompting(false);
+    }
+  }
 
   // Sync state when loadedPreset changes (e.g. loading from Presets page)
   useEffect(() => {
@@ -1152,6 +1211,86 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+      {/* Credential prompt for environments without stored credentials */}
+      <Dialog open={!!credPromptEnvId} onOpenChange={(open) => { if (!open) setCredPromptEnvId(null); }}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Enter Credentials</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Enter credentials for {credPromptRole === 'source' ? 'the source' : 'the target'} environment.
+            </p>
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
+              <Input
+                type="text"
+                value={credPromptClientId}
+                onChange={(e) => setCredPromptClientId(e.target.value)}
+                placeholder="Enter your Sitecore Client ID"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
+              <Input
+                type="password"
+                value={credPromptClientSecret}
+                onChange={(e) => setCredPromptClientSecret(e.target.value)}
+                placeholder="Enter your Sitecore Client Secret"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={credPromptRemember}
+                onCheckedChange={(checked) => {
+                  if (checked === true) {
+                    setShowCredRememberModal(true);
+                  } else {
+                    setCredPromptRemember(false);
+                  }
+                }}
+                id="rememberCredsMigrate"
+              />
+              <Label htmlFor="rememberCredsMigrate" className="text-sm text-foreground">
+                Remember Credentials
+              </Label>
+            </div>
+            {credPromptError && (
+              <div className="text-xs text-destructive px-3 py-2 bg-destructive/10 rounded border border-destructive/30">
+                {credPromptError}
+              </div>
+            )}
+            <DialogFooter className="mt-2">
+              <Button variant="outline" onClick={() => setCredPromptEnvId(null)}>Cancel</Button>
+              <Button
+                onClick={handleCredPromptSubmit}
+                disabled={isCredPrompting || !credPromptClientId || !credPromptClientSecret}
+              >
+                {isCredPrompting ? 'Connecting...' : 'Connect'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remember Credentials info modal (migrate page) */}
+      <AlertDialog open={showCredRememberModal} onOpenChange={(open) => { if (!open) setShowCredRememberModal(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Credential Storage</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your credentials will be encrypted and stored securely on our servers. Only the application can access them — no person can view or retrieve your credentials. You can delete them at any time from the Environments page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowCredRememberModal(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setCredPromptRemember(true); setShowCredRememberModal(false); }}>
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
