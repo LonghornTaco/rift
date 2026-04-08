@@ -36,16 +36,16 @@ export async function transferPath(
 
   // Phase 1: Create content transfer on source
   report('creating');
+  const transferId = crypto.randomUUID();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const createResult = await client.mutate('xmc.contentTransfer.createContentTransfer', {
+  await client.mutate('xmc.contentTransfer.createContentTransfer', {
     params: {
       query: { sitecoreContextId: sourceContextId },
-      body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId: crypto.randomUUID() },
+      body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId },
     },
   } as any);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const operationId = (createResult.data as any)?.data?.operationId;
-  if (!operationId) throw new Error('createContentTransfer did not return operationId');
+  // The API returns 202 with empty body — use our generated transferId as the operation ID
+  const operationId = transferId;
 
   try {
     // Phase 2: Poll until export is ready

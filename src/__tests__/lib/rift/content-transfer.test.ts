@@ -12,8 +12,8 @@ describe('transferPath', () => {
   it('executes the full 8-step lifecycle', async () => {
     const { client, mutate, query } = createMockClient();
 
-    // createContentTransfer
-    mutate.mockResolvedValueOnce({ data: { data: { operationId: 'op-1' } } });
+    // createContentTransfer — returns 202 with empty data (we use our own transferId)
+    mutate.mockResolvedValueOnce({ data: { data: {} } });
     // getContentTransferStatus — ready with 1 chunk
     query.mockResolvedValueOnce({ data: { data: { State: 'Ready', ChunkSetsMetadata: [{ ChunkSetId: 'cs-1', ChunkCount: 1, TotalItemCount: 1 }] } } });
     // getChunk — returns blob data
