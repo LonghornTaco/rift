@@ -2,13 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { RiftPreset, RiftEnvironment } from '@/lib/rift/types';
-import { getPresets, getEnvironments } from '@/lib/rift/storage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface RiftWelcomeProps {
+  environments: RiftEnvironment[];
   onNewMigration: () => void;
   onLoadPreset: (preset: RiftPreset) => void;
+}
+
+function getPresets(): RiftPreset[] {
+  try { return JSON.parse(localStorage.getItem('rift:presets') ?? '[]'); } catch { return []; }
 }
 
 function formatDate(iso: string): string {
@@ -20,23 +24,16 @@ function formatDate(iso: string): string {
   }
 }
 
-export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) {
+export function RiftWelcome({ environments, onNewMigration, onLoadPreset }: RiftWelcomeProps) {
   const [presets, setPresets] = useState<RiftPreset[]>([]);
-  const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
 
   useEffect(() => {
     setPresets(getPresets());
-    setEnvironments(getEnvironments());
   }, []);
 
-  const envName = (id?: string) => environments.find((e) => e.id === id)?.name ?? '';
+  const envName = (tenantId?: string) =>
+    environments.find((e) => e.tenantId === tenantId)?.tenantDisplayName ?? '';
   const siteName = (path?: string) => path?.split('/').pop() ?? '';
-  const needsCredentials = (preset: RiftPreset) => {
-    const sourceEnv = environments.find((e) => e.id === preset.sourceEnvId);
-    const targetEnv = environments.find((e) => e.id === preset.targetEnvId);
-    return (preset.sourceEnvId && (!sourceEnv || !sourceEnv.hasStoredCredentials)) ||
-           (preset.targetEnvId && (!targetEnv || !targetEnv.hasStoredCredentials));
-  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full flex-1 p-8">
@@ -62,44 +59,37 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
           SAVED PRESETS
         </div>
 
-        {(
-          <div className="bg-card border border-border rounded-md">
-            {presets.map((preset, index) => (
-              <div
-                key={preset.id}
-                onClick={() => onLoadPreset(preset)}
-                className={cn(
-                  'px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-muted',
-                  index > 0 && 'border-t border-border'
-                )}
-              >
-                <div>
-                  <div className="text-[13px] font-semibold text-foreground">
-                    {preset.name}
-                  </div>
+        <div className="bg-card border border-border rounded-md">
+          {presets.map((preset, index) => (
+            <div
+              key={preset.id}
+              onClick={() => onLoadPreset(preset)}
+              className={cn(
+                'px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-muted',
+                index > 0 && 'border-t border-border'
+              )}
+            >
+              <div>
+                <div className="text-[13px] font-semibold text-foreground">
+                  {preset.name}
+                </div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  {preset.paths.length} {preset.paths.length === 1 ? 'path' : 'paths'} &middot; Last used {formatDate(preset.lastUsed)}
+                </div>
+                {(preset.sourceTenantId || preset.targetTenantId || preset.siteRootPath) && (
                   <div className="text-[11px] text-muted-foreground mt-0.5">
-                    {preset.paths.length} {preset.paths.length === 1 ? 'path' : 'paths'} &middot; Last used {formatDate(preset.lastUsed)}
+                    {envName(preset.sourceTenantId) && <span>{envName(preset.sourceTenantId)}</span>}
+                    {envName(preset.targetTenantId) && <span> &rarr; {envName(preset.targetTenantId)}</span>}
+                    {siteName(preset.siteRootPath) && <span> &middot; {siteName(preset.siteRootPath)}</span>}
                   </div>
-                  {(preset.sourceEnvId || preset.targetEnvId || preset.siteRootPath) && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                      {envName(preset.sourceEnvId) && <span>{envName(preset.sourceEnvId)}</span>}
-                      {envName(preset.targetEnvId) && <span> &rarr; {envName(preset.targetEnvId)}</span>}
-                      {siteName(preset.siteRootPath) && <span> &middot; {siteName(preset.siteRootPath)}</span>}
-                    </div>
-                  )}
-                  {needsCredentials(preset) && (
-                    <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                      Credentials needed
-                    </div>
-                  )}
-                </div>
-                <div className="text-xs text-primary font-medium">
-                  Load &rarr;
-                </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+              <div className="text-xs text-primary font-medium">
+                Load &rarr;
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       )}
     </div>

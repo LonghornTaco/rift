@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { RiftPreset, RiftEnvironment, MigrationPath } from '@/lib/rift/types';
-import { getPresets, getEnvironments, savePreset, deletePreset, updatePresetLastUsed } from '@/lib/rift/storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 interface RiftPresetsProps {
+  environments: RiftEnvironment[];
   onLoadPreset: (preset: RiftPreset) => void;
 }
 
@@ -25,8 +25,6 @@ const scopeLabels: Record<MigrationPath['scope'], string> = {
   SingleItem: 'Item only',
   ItemAndChildren: 'Item + children',
   ItemAndDescendants: 'Item + descendants',
-  ChildrenOnly: 'Children only',
-  DescendantsOnly: 'Descendants only',
 };
 
 function truncatePath(path: string): string {
@@ -35,9 +33,33 @@ function truncatePath(path: string): string {
   return '.../' + segments.slice(-3).join('/');
 }
 
-export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
+function getPresets(): RiftPreset[] {
+  try { return JSON.parse(localStorage.getItem('rift:presets') ?? '[]'); } catch { return []; }
+}
+
+function savePreset(preset: RiftPreset): void {
+  const all = getPresets();
+  const idx = all.findIndex((p) => p.id === preset.id);
+  if (idx >= 0) { all[idx] = preset; } else { all.push(preset); }
+  localStorage.setItem('rift:presets', JSON.stringify(all));
+}
+
+function deletePreset(id: string): void {
+  const all = getPresets().filter((p) => p.id !== id);
+  localStorage.setItem('rift:presets', JSON.stringify(all));
+}
+
+function updatePresetLastUsed(id: string): void {
+  const all = getPresets();
+  const idx = all.findIndex((p) => p.id === id);
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], lastUsed: new Date().toISOString() };
+    localStorage.setItem('rift:presets', JSON.stringify(all));
+  }
+}
+
+export function RiftPresets({ environments, onLoadPreset }: RiftPresetsProps) {
   const [presets, setPresets] = useState<RiftPreset[]>([]);
-  const [environments, setEnvironments] = useState<RiftEnvironment[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -48,7 +70,6 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
 
   useEffect(() => {
     refreshPresets();
-    setEnvironments(getEnvironments());
   }, []);
 
   const handleLoad = (preset: RiftPreset) => {
@@ -89,6 +110,9 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
       return iso;
     }
   };
+
+  const envName = (tenantId?: string) =>
+    environments.find((e) => e.tenantId === tenantId)?.tenantDisplayName ?? 'Unknown';
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -138,13 +162,13 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
               </div>
 
               {/* Source, target, site */}
-              {(preset.sourceEnvId || preset.targetEnvId || preset.siteRootPath) && (
+              {(preset.sourceTenantId || preset.targetTenantId || preset.siteRootPath) && (
                 <div className="text-xs text-muted-foreground mt-2">
                   <div className="flex gap-4">
-                    {preset.sourceEnvId && (
+                    {preset.sourceTenantId && (
                       <span>
                         <span className="font-semibold text-muted-foreground">Source:</span>{' '}
-                        {environments.find((e) => e.id === preset.sourceEnvId)?.name ?? 'Unknown'}
+                        {envName(preset.sourceTenantId)}
                       </span>
                     )}
                     {preset.siteRootPath && (
@@ -154,28 +178,14 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
                       </span>
                     )}
                   </div>
-                  {preset.targetEnvId && (
+                  {preset.targetTenantId && (
                     <div className="mt-0.5">
                       <span className="font-semibold text-muted-foreground">Target:</span>{' '}
-                      {environments.find((e) => e.id === preset.targetEnvId)?.name ?? 'Unknown'}
+                      {envName(preset.targetTenantId)}
                     </div>
                   )}
                 </div>
               )}
-
-              {/* Credentials warning */}
-              {(() => {
-                const sourceEnv = environments.find((e) => e.id === preset.sourceEnvId);
-                const targetEnv = environments.find((e) => e.id === preset.targetEnvId);
-                const sourceMissing = preset.sourceEnvId && (!sourceEnv || !sourceEnv.hasStoredCredentials);
-                const targetMissing = preset.targetEnvId && (!targetEnv || !targetEnv.hasStoredCredentials);
-                if (!sourceMissing && !targetMissing) return null;
-                return (
-                  <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                    Credentials needed{sourceMissing && targetMissing ? ' (source & target)' : sourceMissing ? ' (source)' : ' (target)'}
-                  </div>
-                );
-              })()}
 
               {/* Path list */}
               {preset.paths.length > 0 && (
