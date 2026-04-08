@@ -332,6 +332,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         } else {
           setIsLoadingSites(false);
           setIsRestoringPreset(false);
+          setPendingSiteRootPath(null);
           setCredPromptEnvId(env.id);
           setCredPromptRole('source');
           setCredPromptClientId('');

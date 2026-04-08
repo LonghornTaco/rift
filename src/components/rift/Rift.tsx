@@ -355,7 +355,7 @@ export function Rift() {
           <div className="flex flex-col items-center text-center py-4">
             <img src="/rift-logo.svg" alt="Rift" className="w-16 h-16 mb-4" />
             <div className="text-lg font-bold text-foreground">Rift</div>
-            <div className="text-sm text-muted-foreground mb-4">Content Migration for Sitecore XM Cloud</div>
+            <div className="text-sm text-muted-foreground mb-4">Content Migration for SitecoreAI</div>
             <div className="text-xs text-muted-foreground space-y-1">
               <div><span className="font-medium text-foreground">Version:</span> 1.0.0</div>
               <div><span className="font-medium text-foreground">Author:</span> Wilkerson Consulting</div>
