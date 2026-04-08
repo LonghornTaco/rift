@@ -222,6 +222,15 @@ function RiftApp() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   size="sm"
+                  onClick={toggleDarkMode}
+                >
+                  <span className="w-5 text-center inline-block shrink-0">{darkMode ? '\uD83C\uDF19' : '\u2600\uFE0F'}</span>
+                  <span>{darkMode ? 'Dark Mode' : 'Light Mode'}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  size="sm"
                   onClick={() => setShowAbout(true)}
                 >
                   <span className="w-5 text-center inline-block shrink-0">{'\u2139\uFE0F'}</span>
