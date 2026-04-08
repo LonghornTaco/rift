@@ -47,11 +47,13 @@ export async function fetchSites(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sites = (response.data as any)?.data ?? [];
-  return sites.map((s: { name: string; rootItem?: { path: string }; collection?: { name: string } }) => ({
-    name: s.name,
-    rootPath: s.rootItem?.path ?? '',
-    collection: s.collection?.name ?? '',
-  }));
+  return sites
+    .map((s: { name: string; rootItem?: { path: string }; collection?: { name: string } }) => ({
+      name: s.name,
+      rootPath: s.rootItem?.path ?? '',
+      collection: s.collection?.name ?? '',
+    }))
+    .filter((s: { rootPath: string }) => s.rootPath !== '');
 }
 
 /**

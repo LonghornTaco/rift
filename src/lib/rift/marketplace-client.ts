@@ -38,12 +38,13 @@ export function useMarketplaceClient(): MarketplaceState {
         const contextResult = await client.query('application.context');
         const appContext = contextResult.data ?? null;
 
-        const environments: RiftEnvironment[] = (appContext?.resourceAccess ?? [])
-          .filter(r => r.resourceId === 'xmcloud')
-          .map(r => ({
+        const resources = appContext?.resourceAccess ?? appContext?.resources ?? [];
+        const environments: RiftEnvironment[] = resources
+          .filter((r: any) => r.resourceId === 'xmcloud' && r.tenantId)
+          .map((r: any) => ({
             tenantId: r.tenantId,
             tenantDisplayName: r.tenantDisplayName ?? r.tenantName ?? r.tenantId,
-            contextId: r.context.preview,
+            contextId: r.context?.preview ?? '',
           }));
 
         setState({
