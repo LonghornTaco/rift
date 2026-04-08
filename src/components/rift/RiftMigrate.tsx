@@ -320,15 +320,17 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
       const envs = getEnvironments();
       const env = envs.find((e) => e.id === envId);
-      if (!env) {
-        setIsRestoringPreset(false);
-        setPendingSiteRootPath(null);
-        return;
-      }
 
       // Clear target if it matches the new source
       if (selectedTargetEnvId === envId) {
         setSelectedTargetEnvId(null);
+      }
+
+      if (!env) {
+        setIsRestoringPreset(false);
+        setPendingSiteRootPath(null);
+        setAuthError('Source environment not found. Please set it up from the Environments page.');
+        return;
       }
 
       if (!env.hasStoredCredentials) {
@@ -1272,7 +1274,12 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             </DialogHeader>
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">
-                Enter credentials for {credPromptRole === 'source' ? 'the source' : 'the target'} environment.
+                Enter credentials for {credPromptRole === 'source' ? 'the source' : 'the target'} environment
+                {credPromptEnvId && (() => {
+                  const env = environments.find((e) => e.id === credPromptEnvId);
+                  return env ? <> (<span className="font-medium text-foreground">{env.name}</span>)</> : null;
+                })()}
+                .
               </p>
               <div>
                 <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
