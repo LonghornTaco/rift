@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RiftPreset, RiftEnvironment, MigrationPath, MigrationHistoryEntry, MigrationLogLevel, TreeNode, SiteInfo, DEFAULT_SETTINGS } from '@/lib/rift/types';
 import { getEnvironments, getPresets, savePreset, addHistoryEntry, getSettings, saveSettings } from '@/lib/rift/storage';
-import { authenticate } from '@/lib/rift/sitecore-auth';
+import { authenticate, authenticateFromStored } from '@/lib/rift/sitecore-auth';
 import { fetchSites } from '@/lib/rift/api-client';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
@@ -315,7 +315,14 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
       try {
         setIsLoadingSites(true);
-        const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+        let result;
+        if (env.hasStoredCredentials) {
+          result = await authenticateFromStored(env.id, env.cmUrl, env.name);
+        } else {
+          // No stored credentials — need credential prompt
+          setAuthError('No credentials available. Please reconnect this environment.');
+          return;
+        }
         setSessionId(result.sessionId);
         const fetchedSites = await fetchSites();
         setSites(fetchedSites);
@@ -338,7 +345,13 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
     const env = envs.find((e) => e.id === envId);
     if (env) {
       try {
-        const result = await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+        let result;
+        if (env.hasStoredCredentials) {
+          result = await authenticateFromStored(env.id, env.cmUrl, env.name);
+        } else {
+          setAuthError('No credentials available for target. Please reconnect this environment.');
+          return;
+        }
         setTargetSessionId(result.sessionId);
       } catch {
         setAuthError('Failed to authenticate target environment');
