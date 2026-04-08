@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIp } from '@/lib/rift/api-security';
 import { logAuth, logRateLimit, logError } from '@/lib/rift/logger';
 import { createSession } from '@/lib/rift/session-store';
+import { getStoredCredentials } from '@/lib/rift/credential-store';
 import { buildSessionCookie } from '@/lib/rift/session-middleware';
 
 interface AuthRequestBody {
-  clientId: string;
-  clientSecret: string;
+  clientId?: string;
+  clientSecret?: string;
   envId: string;
   cmUrl: string;
   envName: string;
@@ -30,12 +31,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { clientId, clientSecret, envId, cmUrl, envName } = body;
+  let { clientId, clientSecret } = body;
+  const { envId, cmUrl, envName } = body;
+
+  // If credentials not provided directly, look up stored credentials
   if (!clientId || !clientSecret) {
-    return NextResponse.json(
-      { error: 'clientId and clientSecret are required' },
-      { status: 400 }
-    );
+    if (!envId) {
+      return NextResponse.json(
+        { error: 'clientId/clientSecret or envId with stored credentials required' },
+        { status: 400 }
+      );
+    }
+    try {
+      const stored = await getStoredCredentials(envId);
+      if (!stored) {
+        return NextResponse.json(
+          { error: 'no_stored_credentials', message: 'No stored credentials for this environment.' },
+          { status: 401 }
+        );
+      }
+      clientId = stored.clientId;
+      clientSecret = stored.clientSecret;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      logError('/api/rift/auth', 'credential_lookup_error', detail, { clientIp });
+      return NextResponse.json(
+        { error: 'Failed to retrieve stored credentials' },
+        { status: 500 }
+      );
+    }
   }
 
   try {
