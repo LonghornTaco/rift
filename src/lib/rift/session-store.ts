@@ -36,7 +36,7 @@ function getCredential() {
   return credential;
 }
 
-function getTableClient(): TableClient {
+export function getTableClient(): TableClient {
   if (!tableClient) {
     const account = process.env.AZURE_STORAGE_ACCOUNT;
     const table = process.env.AZURE_STORAGE_TABLE || 'sessions';
@@ -63,7 +63,7 @@ async function getCryptoClient(): Promise<CryptographyClient> {
 }
 
 /** Envelope encryption: AES-256-GCM locally, RSA-OAEP wraps the AES key via Key Vault */
-async function encryptString(plaintext: string): Promise<string> {
+export async function encryptString(plaintext: string): Promise<string> {
   const aesKey = randomBytes(32);
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', aesKey, iv);
@@ -84,7 +84,7 @@ async function encryptString(plaintext: string): Promise<string> {
   return Buffer.from(payload).toString('base64');
 }
 
-async function decryptString(envelope: string): Promise<string> {
+export async function decryptString(envelope: string): Promise<string> {
   const payload = JSON.parse(Buffer.from(envelope, 'base64').toString('utf-8'));
   const wrappedKey = Buffer.from(payload.k, 'base64');
   const iv = Buffer.from(payload.iv, 'base64');
