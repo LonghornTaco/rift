@@ -22,7 +22,9 @@ export async function fetchTreeChildren(
     params: { query: { sitecoreContextId: contextId }, body: query },
   });
 
-  const nodes = response.data?.data?.item?.children?.nodes ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resData = response.data as any;
+  const nodes = resData?.data?.item?.children?.nodes ?? [];
   return nodes.map((n: { itemId: string; name: string; path: string; hasChildren: boolean; template: { name: string } }) => ({
     itemId: n.itemId,
     name: n.name,
@@ -43,7 +45,8 @@ export async function fetchSites(
     params: { query: { sitecoreContextId: contextId } },
   });
 
-  const sites = response.data?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sites = (response.data as any)?.data ?? [];
   return sites.map((s: { name: string; rootItem?: { path: string }; collection?: { name: string } }) => ({
     name: s.name,
     rootPath: s.rootItem?.path ?? '',
@@ -76,7 +79,8 @@ export async function fetchItemFields(
     params: { query: { sitecoreContextId: contextId }, body: query },
   });
 
-  const item = response.data?.data?.item;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const item = (response.data as any)?.data?.item;
   if (!item) throw new Error(`Item not found: ${itemPath}`);
 
   const fields: Record<string, string> = {};

@@ -101,8 +101,7 @@ export function RiftHistory() {
                   </div>
                 </div>
                 <div className="text-xs text-right px-2">
-                  {entry.succeeded > 0 && <span className="text-green-600 dark:text-green-400">{entry.succeeded} ok</span>}
-                  {entry.failed > 0 && <span className="text-destructive ml-2">{entry.failed} failed</span>}
+                  <span className="text-muted-foreground">{entry.paths.length} {entry.paths.length === 1 ? 'path' : 'paths'}</span>
                 </div>
                 <span className="text-muted-foreground text-xs text-right">{expandedId === entry.id ? '\u25B2' : '\u25BC'}</span>
               </button>
@@ -110,12 +109,8 @@ export function RiftHistory() {
               {expandedId === entry.id && (
                 <div className="px-4 pb-3 border-t border-border pt-2">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs mb-2">
-                    <div><span className="text-muted-foreground">Total items:</span> <span className="text-foreground">{entry.totalItems}</span></div>
+                    <div><span className="text-muted-foreground">Status:</span> <span className="text-foreground">{statusLabels[entry.status]}</span></div>
                     <div><span className="text-muted-foreground">Elapsed:</span> <span className="text-foreground">{formatElapsed(entry.elapsedMs)}</span></div>
-                    <div><span className="text-muted-foreground">Created:</span> <span className="text-foreground">{entry.created}</span></div>
-                    <div><span className="text-muted-foreground">Updated:</span> <span className="text-foreground">{entry.updated}</span></div>
-                    <div><span className="text-muted-foreground">Succeeded:</span> <span className="text-green-600 dark:text-green-400">{entry.succeeded}</span></div>
-                    <div><span className="text-muted-foreground">Failed:</span> <span className={entry.failed > 0 ? 'text-destructive' : 'text-foreground'}>{entry.failed}</span></div>
                   </div>
                   <div className="text-xs text-muted-foreground font-medium mb-1">Paths:</div>
                   <div className="space-y-0.5">

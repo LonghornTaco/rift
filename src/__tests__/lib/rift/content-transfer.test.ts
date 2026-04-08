@@ -15,7 +15,7 @@ describe('transferPath', () => {
     // createContentTransfer
     mutate.mockResolvedValueOnce({ data: { data: { operationId: 'op-1' } } });
     // getContentTransferStatus — ready with 1 chunk
-    query.mockResolvedValueOnce({ data: { data: { status: 'Ready', totalChunks: 1 } } });
+    query.mockResolvedValueOnce({ data: { data: { State: 'Ready', ChunkSetsMetadata: [{ ChunkSetId: 'cs-1', ChunkCount: 1, TotalItemCount: 1 }] } } });
     // getChunk — returns blob data
     query.mockResolvedValueOnce({ data: { data: new Blob(['chunk-data']) } });
     // saveChunk

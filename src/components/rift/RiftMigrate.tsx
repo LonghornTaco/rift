@@ -20,7 +20,7 @@ import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
-import { RiftProgressOverlay, MigrationMessage } from './RiftProgressOverlay';
+import { RiftProgressOverlay } from './RiftProgressOverlay';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -616,6 +616,8 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
           <div className="flex-1 border-r border-border p-4 overflow-y-auto">
             {selectedSourceEnvId && selectedSiteRootPath ? (
               <RiftContentTree
+                client={client}
+                contextId={environments.find((e) => e.tenantId === selectedSourceEnvId)!.contextId}
                 rootPath={selectedSiteRootPath}
                 selectedPaths={selectedPaths}
                 onTogglePath={handleTogglePath}
@@ -657,8 +659,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
             <div className="min-h-0" style={{ flex: `0 0 ${100 - splitPercent}%` }}>
               <RiftProgressOverlay
                 isActive={isMigrating}
-                messages={transferProgress as unknown as MigrationMessage[]}
-                parallelPaths={parallelPaths}
+                transferProgress={transferProgress}
                 onCancel={() => setShowCancelConfirm(true)}
                 onClose={() => {
                   setMigrationComplete(false);
