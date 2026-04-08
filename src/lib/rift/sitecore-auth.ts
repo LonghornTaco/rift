@@ -25,3 +25,23 @@ export async function authenticate(
 
   return res.json();
 }
+
+/** Authenticate using server-side stored credentials (no secrets from browser) */
+export async function authenticateFromStored(
+  envId: string,
+  cmUrl: string,
+  envName: string
+): Promise<AuthResult> {
+  const res = await fetch('/api/rift/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ envId, cmUrl, envName }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || data.message || `Authentication failed (${res.status})`);
+  }
+
+  return res.json();
+}

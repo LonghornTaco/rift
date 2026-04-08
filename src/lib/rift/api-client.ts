@@ -143,6 +143,48 @@ export function parseProjectList(rawProjects: unknown): ProjectOption[] {
  * Filters to only CM environments belonging to the specified project,
  * since the Deploy API ignores the projectId query parameter.
  */
+/** Store credentials server-side for an environment */
+export async function storeCredentialsApi(
+  envId: string,
+  clientId: string,
+  clientSecret: string
+): Promise<void> {
+  const res = await fetch('/api/rift/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ envId, clientId, clientSecret, action: 'store' }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to store credentials');
+  }
+}
+
+/** Check if credentials are stored server-side for an environment */
+export async function checkCredentialsApi(envId: string): Promise<boolean> {
+  const res = await fetch('/api/rift/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ envId, action: 'check' }),
+  });
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.hasCredentials === true;
+}
+
+/** Delete stored credentials for an environment */
+export async function deleteCredentialsApi(envId: string): Promise<void> {
+  const res = await fetch('/api/rift/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ envId, action: 'delete' }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete credentials');
+  }
+}
+
 export function parseEnvironmentList(rawEnvs: unknown, forProjectId: string): EnvironmentOption[] {
   const envList = Array.isArray(rawEnvs)
     ? rawEnvs
