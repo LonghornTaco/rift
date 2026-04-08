@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Validates that a cmUrl points to a legitimate Sitecore XM Cloud host.
+ * Validates that a cmUrl points to a legitimate SitecoreAI host.
  * Prevents SSRF by enforcing an allowlist of permitted URL patterns.
  */
 const CM_URL_PATTERN = /^https:\/\/[a-z0-9-]+\.sitecorecloud\.io\/?$/i;
 
 export function validateCmUrl(cmUrl: string): string | null {
   if (!CM_URL_PATTERN.test(cmUrl)) {
-    return 'Invalid cmUrl: must be a valid Sitecore XM Cloud URL (https://*.sitecorecloud.io)';
+    return 'Invalid cmUrl: must be a valid SitecoreAI URL (https://*.sitecorecloud.io)';
   }
   return null;
 }

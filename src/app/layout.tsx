@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
-  title: 'Rift — Content Migration for Sitecore XM Cloud',
+  title: 'Rift — Content Migration for SitecoreAI',
   icons: {
     icon: '/favicon.ico',
   },
