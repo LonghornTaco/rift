@@ -163,6 +163,20 @@ export function RiftPresets({ onLoadPreset }: RiftPresetsProps) {
                 </div>
               )}
 
+              {/* Credentials warning */}
+              {(() => {
+                const sourceEnv = environments.find((e) => e.id === preset.sourceEnvId);
+                const targetEnv = environments.find((e) => e.id === preset.targetEnvId);
+                const sourceMissing = preset.sourceEnvId && (!sourceEnv || !sourceEnv.hasStoredCredentials);
+                const targetMissing = preset.targetEnvId && (!targetEnv || !targetEnv.hasStoredCredentials);
+                if (!sourceMissing && !targetMissing) return null;
+                return (
+                  <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Credentials needed{sourceMissing && targetMissing ? ' (source & target)' : sourceMissing ? ' (source)' : ' (target)'}
+                  </div>
+                );
+              })()}
+
               {/* Path list */}
               {preset.paths.length > 0 && (
                 <div className="mt-2 px-2.5 py-2 bg-muted rounded border border-border text-xs font-mono leading-[1.8] max-h-[120px] overflow-y-auto">

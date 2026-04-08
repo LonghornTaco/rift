@@ -77,6 +77,7 @@ export function RiftEnvironments() {
   const [allowWrite, setAllowWrite] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [forgettingCredId, setForgettingCredId] = useState<string | null>(null);
   const [rememberCredentials, setRememberCredentials] = useState(false);
   const [showRememberModal, setShowRememberModal] = useState(false);
   const [reconnectEnvId, setReconnectEnvId] = useState<string | null>(null);
@@ -255,6 +256,7 @@ export function RiftEnvironments() {
   }
 
   async function handleForgetCredentials(envId: string) {
+    setForgettingCredId(envId);
     try {
       await deleteCredentialsApi(envId);
       const env = environments.find((e) => e.id === envId);
@@ -266,6 +268,8 @@ export function RiftEnvironments() {
       refreshEnvironments();
     } catch (err) {
       console.error('[Rift] Failed to forget credentials:', err);
+    } finally {
+      setForgettingCredId(null);
     }
   }
 
@@ -645,8 +649,8 @@ export function RiftEnvironments() {
                 </div>
                 {env.hasStoredCredentials && (
                   <div className="flex gap-2">
-                    <Button variant="outline" size="xs" onClick={() => handleForgetCredentials(env.id)}>
-                      Forget Credentials
+                    <Button variant="outline" size="xs" onClick={() => handleForgetCredentials(env.id)} disabled={forgettingCredId === env.id}>
+                      {forgettingCredId === env.id ? 'Forgetting...' : 'Forget Credentials'}
                     </Button>
                   </div>
                 )}

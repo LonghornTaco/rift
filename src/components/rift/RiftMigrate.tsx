@@ -483,15 +483,18 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
 
   if (isWorkspaceLoading) {
     return (
-      <div className="flex flex-col items-center justify-center flex-1 gap-4 text-muted-foreground">
-        <svg className="animate-spin h-12 w-12" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-        </svg>
-        <span className="text-base">
-          {isLoadingSites ? 'Connecting to environment...' : 'Loading preset...'}
-        </span>
-      </div>
+      <>
+        <div className="flex flex-col items-center justify-center flex-1 gap-4 text-muted-foreground">
+          <svg className="animate-spin h-12 w-12" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-base">
+            {isLoadingSites ? 'Connecting to environment...' : 'Loading preset...'}
+          </span>
+        </div>
+        {renderCredentialDialogs()}
+      </>
     );
   }
 
@@ -1222,85 +1225,93 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           </AlertDialogContent>
         </AlertDialog>
 
-      {/* Credential prompt for environments without stored credentials */}
-      <Dialog open={!!credPromptEnvId} onOpenChange={(open) => { if (!open) setCredPromptEnvId(null); }}>
-        <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle>Enter Credentials</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              Enter credentials for {credPromptRole === 'source' ? 'the source' : 'the target'} environment.
-            </p>
-            <div>
-              <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
-              <Input
-                type="text"
-                value={credPromptClientId}
-                onChange={(e) => setCredPromptClientId(e.target.value)}
-                placeholder="Enter your Sitecore Client ID"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
-              <Input
-                type="password"
-                value={credPromptClientSecret}
-                onChange={(e) => setCredPromptClientSecret(e.target.value)}
-                placeholder="Enter your Sitecore Client Secret"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={credPromptRemember}
-                onCheckedChange={(checked) => {
-                  if (checked === true) {
-                    setShowCredRememberModal(true);
-                  } else {
-                    setCredPromptRemember(false);
-                  }
-                }}
-                id="rememberCredsMigrate"
-              />
-              <Label htmlFor="rememberCredsMigrate" className="text-sm text-foreground">
-                Remember Credentials
-              </Label>
-            </div>
-            {credPromptError && (
-              <div className="text-xs text-destructive px-3 py-2 bg-destructive/10 rounded border border-destructive/30">
-                {credPromptError}
-              </div>
-            )}
-            <DialogFooter className="mt-2">
-              <Button variant="outline" onClick={() => setCredPromptEnvId(null)}>Cancel</Button>
-              <Button
-                onClick={handleCredPromptSubmit}
-                disabled={isCredPrompting || !credPromptClientId || !credPromptClientSecret}
-              >
-                {isCredPrompting ? 'Connecting...' : 'Connect'}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Remember Credentials info modal (migrate page) */}
-      <AlertDialog open={showCredRememberModal} onOpenChange={(open) => { if (!open) setShowCredRememberModal(false); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Credential Storage</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your credentials will be encrypted and stored securely on our servers. Only the application can access them — no person can view or retrieve your credentials. You can delete them at any time from the Environments page.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowCredRememberModal(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setCredPromptRemember(true); setShowCredRememberModal(false); }}>
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {renderCredentialDialogs()}
     </div>
   );
+
+  function renderCredentialDialogs() {
+    return (
+      <>
+        {/* Credential prompt for environments without stored credentials */}
+        <Dialog open={!!credPromptEnvId} onOpenChange={(open) => { if (!open) setCredPromptEnvId(null); }}>
+          <DialogContent size="sm">
+            <DialogHeader>
+              <DialogTitle>Enter Credentials</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Enter credentials for {credPromptRole === 'source' ? 'the source' : 'the target'} environment.
+              </p>
+              <div>
+                <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
+                <Input
+                  type="text"
+                  value={credPromptClientId}
+                  onChange={(e) => setCredPromptClientId(e.target.value)}
+                  placeholder="Enter your Sitecore Client ID"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
+                <Input
+                  type="password"
+                  value={credPromptClientSecret}
+                  onChange={(e) => setCredPromptClientSecret(e.target.value)}
+                  placeholder="Enter your Sitecore Client Secret"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={credPromptRemember}
+                  onCheckedChange={(checked) => {
+                    if (checked === true) {
+                      setShowCredRememberModal(true);
+                    } else {
+                      setCredPromptRemember(false);
+                    }
+                  }}
+                  id="rememberCredsMigrate"
+                />
+                <Label htmlFor="rememberCredsMigrate" className="text-sm text-foreground">
+                  Remember Credentials
+                </Label>
+              </div>
+              {credPromptError && (
+                <div className="text-xs text-destructive px-3 py-2 bg-destructive/10 rounded border border-destructive/30">
+                  {credPromptError}
+                </div>
+              )}
+              <DialogFooter className="mt-2">
+                <Button variant="outline" onClick={() => setCredPromptEnvId(null)}>Cancel</Button>
+                <Button
+                  onClick={handleCredPromptSubmit}
+                  disabled={isCredPrompting || !credPromptClientId || !credPromptClientSecret}
+                >
+                  {isCredPrompting ? 'Connecting...' : 'Connect'}
+                </Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Remember Credentials info modal (migrate page) */}
+        <AlertDialog open={showCredRememberModal} onOpenChange={(open) => { if (!open) setShowCredRememberModal(false); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Credential Storage</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your credentials will be encrypted and stored securely on our servers. Only the application can access them — no person can view or retrieve your credentials. You can delete them at any time from the Environments page.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowCredRememberModal(false)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setCredPromptRemember(true); setShowCredRememberModal(false); }}>
+                Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
+    );
+  }
 }

@@ -31,6 +31,12 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
 
   const envName = (id?: string) => environments.find((e) => e.id === id)?.name ?? '';
   const siteName = (path?: string) => path?.split('/').pop() ?? '';
+  const needsCredentials = (preset: RiftPreset) => {
+    const sourceEnv = environments.find((e) => e.id === preset.sourceEnvId);
+    const targetEnv = environments.find((e) => e.id === preset.targetEnvId);
+    return (preset.sourceEnvId && (!sourceEnv || !sourceEnv.hasStoredCredentials)) ||
+           (preset.targetEnvId && (!targetEnv || !targetEnv.hasStoredCredentials));
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-full flex-1 p-8">
@@ -79,6 +85,11 @@ export function RiftWelcome({ onNewMigration, onLoadPreset }: RiftWelcomeProps) 
                       {envName(preset.sourceEnvId) && <span>{envName(preset.sourceEnvId)}</span>}
                       {envName(preset.targetEnvId) && <span> &rarr; {envName(preset.targetEnvId)}</span>}
                       {siteName(preset.siteRootPath) && <span> &middot; {siteName(preset.siteRootPath)}</span>}
+                    </div>
+                  )}
+                  {needsCredentials(preset) && (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                      Credentials needed
                     </div>
                   )}
                 </div>
