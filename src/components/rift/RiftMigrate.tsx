@@ -105,6 +105,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const [credPromptRemember, setCredPromptRemember] = useState(false);
   const [showCredRememberModal, setShowCredRememberModal] = useState(false);
   const [credPromptRole, setCredPromptRole] = useState<'source' | 'target'>('source');
+  const [credPromptSameAsSource, setCredPromptSameAsSource] = useState(false);
+  const sourceCredsRef = useRef<{ clientId: string; clientSecret: string } | null>(null);
 
   // Track whether we're still waiting for the full workspace to be ready
   const isWorkspaceLoading = isRestoringPreset || (!!loadedPreset?.sourceEnvId && isLoadingSites) || (!!loadedPreset?.siteRootPath && pendingSiteRootPath !== null);
@@ -436,6 +438,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         if (loadedPreset?.targetEnvId) {
           const targetEnv = getEnvironments().find((e) => e.id === loadedPreset.targetEnvId);
           if (!targetEnv?.hasStoredCredentials) {
+            sourceCredsRef.current = { clientId: credPromptClientId, clientSecret: credPromptClientSecret };
             setSelectedTargetEnvId(loadedPreset.targetEnvId);
             setCredPromptEnvId(loadedPreset.targetEnvId);
             setCredPromptRole('target');
@@ -443,6 +446,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
             setCredPromptClientSecret('');
             setCredPromptError(null);
             setCredPromptRemember(false);
+            setCredPromptSameAsSource(false);
             return;
           } else {
             handleTargetEnvChange(loadedPreset.targetEnvId);
@@ -1292,12 +1296,34 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 })()}
                 .
               </p>
+              {credPromptRole === 'target' && sourceCredsRef.current && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={credPromptSameAsSource}
+                    onCheckedChange={(checked) => {
+                      const same = checked === true;
+                      setCredPromptSameAsSource(same);
+                      if (same && sourceCredsRef.current) {
+                        setCredPromptClientId(sourceCredsRef.current.clientId);
+                        setCredPromptClientSecret(sourceCredsRef.current.clientSecret);
+                      } else {
+                        setCredPromptClientId('');
+                        setCredPromptClientSecret('');
+                      }
+                    }}
+                    id="sameCredsAsSource"
+                  />
+                  <Label htmlFor="sameCredsAsSource" className="text-sm text-foreground">
+                    Same credentials as source environment
+                  </Label>
+                </div>
+              )}
               <div>
                 <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
                 <Input
                   type="text"
                   value={credPromptClientId}
-                  onChange={(e) => setCredPromptClientId(e.target.value)}
+                  onChange={(e) => { setCredPromptClientId(e.target.value); setCredPromptSameAsSource(false); }}
                   placeholder="Enter your Sitecore Client ID"
                 />
               </div>
@@ -1306,7 +1332,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
                 <Input
                   type="password"
                   value={credPromptClientSecret}
-                  onChange={(e) => setCredPromptClientSecret(e.target.value)}
+                  onChange={(e) => { setCredPromptClientSecret(e.target.value); setCredPromptSameAsSource(false); }}
                   placeholder="Enter your Sitecore Client Secret"
                 />
               </div>
