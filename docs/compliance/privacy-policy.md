@@ -1,4 +1,4 @@
-# Privacy Policy — Rift: Content Migration for Sitecore XM Cloud
+# Privacy Policy — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
 **Last Updated:** March 21, 2026
@@ -9,7 +9,7 @@
 
 ## 1. Introduction
 
-Rift ("the Application") is a content migration tool for Sitecore XM Cloud that enables users to transfer content between Sitecore XM Cloud environments. This Privacy Policy describes how the Application collects, uses, stores, and protects information.
+Rift ("the Application") is a content migration tool for SitecoreAI that enables users to transfer content between SitecoreAI environments. This Privacy Policy describes how the Application collects, uses, stores, and protects information.
 
 ## 2. Information We Collect
 
@@ -17,8 +17,8 @@ Rift ("the Application") is a content migration tool for Sitecore XM Cloud that 
 
 | Data Type | Description | Purpose |
 |-----------|-------------|---------|
-| Sitecore Client Credentials | OAuth client ID and client secret for XM Cloud environments | Authenticate with Sitecore APIs to perform content migration |
-| Environment Configuration | Environment names, CM URLs | Identify and connect to Sitecore XM Cloud instances |
+| Sitecore Client Credentials | OAuth client ID and client secret for SitecoreAI environments | Authenticate with Sitecore APIs to perform content migration |
+| Environment Configuration | Environment names, CM URLs | Identify and connect to SitecoreAI instances |
 | Migration Paths | Sitecore content tree paths and migration scope selections | Define which content items to migrate |
 | Migration Presets | Saved migration configurations (paths, scopes, environment references) | Allow users to save and reuse migration configurations |
 
@@ -40,7 +40,7 @@ Rift ("the Application") is a content migration tool for Sitecore XM Cloud that 
 
 ## 3. How We Use Information
 
-All data collected is used exclusively for the purpose of performing content migration between Sitecore XM Cloud environments. Specifically:
+All data collected is used exclusively for the purpose of performing content migration between SitecoreAI environments. Specifically:
 
 - **Authentication:** Client credentials are used solely to obtain access tokens from Sitecore Cloud authentication services.
 - **Content Migration:** Content data is read from a source environment and written to a target environment. Content data is not stored, cached, or retained by the Application beyond the duration of the migration operation.
@@ -78,9 +78,9 @@ Data is transmitted only to the following Sitecore-operated services as required
 | Service | Endpoint | Purpose |
 |---------|----------|---------|
 | Sitecore Cloud Authentication | `auth.sitecorecloud.io` | OAuth token exchange |
-| Sitecore XM Cloud Deploy API | `xmclouddeploy-api.sitecorecloud.io` | Project and environment discovery |
-| Sitecore XM Cloud Authoring API | `[environment].sitecorecloud.io/sitecore/api/authoring/graphql/v1` | Content tree browsing and metadata |
-| Sitecore XM Cloud Management API | `[environment].sitecorecloud.io/sitecore/api/management` | Content serialization and migration |
+| SitecoreAI Deploy API | `xmclouddeploy-api.sitecorecloud.io` | Project and environment discovery |
+| SitecoreAI Authoring API | `[environment].sitecorecloud.io/sitecore/api/authoring/graphql/v1` | Content tree browsing and metadata |
+| SitecoreAI Management API | `[environment].sitecorecloud.io/sitecore/api/management` | Content serialization and migration |
 
 ## 6. Data Protection Measures
 
@@ -123,7 +123,7 @@ The Application is intended for use by Sitecore administrators and developers. I
 
 ## 9. International Data Transfers
 
-The Application processes data in the region where it is deployed. Content data is transferred between Sitecore XM Cloud environments, which may be located in different geographic regions as configured by the user's Sitecore organization.
+The Application processes data in the region where it is deployed. Content data is transferred between SitecoreAI environments, which may be located in different geographic regions as configured by the user's Sitecore organization.
 
 ## 10. Changes to This Policy
 

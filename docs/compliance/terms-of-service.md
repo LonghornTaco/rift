@@ -1,4 +1,4 @@
-# Terms of Service — Rift: Content Migration for Sitecore XM Cloud
+# Terms of Service — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 23, 2026
 **Last Updated:** March 23, 2026
@@ -12,11 +12,11 @@ By installing, accessing, or using Rift ("the Application"), you agree to be bou
 
 ## 2. Description of Service
 
-Rift is a content migration tool for Sitecore XM Cloud that enables users to transfer content between Sitecore XM Cloud environments. The Application operates as a standalone web application within the Sitecore Marketplace ecosystem.
+Rift is a content migration tool for SitecoreAI that enables users to transfer content between SitecoreAI environments. The Application operates as a standalone web application within the Sitecore Marketplace ecosystem.
 
 ## 3. License
 
-Subject to these Terms, Wilkerson Consulting grants you a limited, non-exclusive, non-transferable, revocable license to use the Application for its intended purpose of migrating content between Sitecore XM Cloud environments.
+Subject to these Terms, Wilkerson Consulting grants you a limited, non-exclusive, non-transferable, revocable license to use the Application for its intended purpose of migrating content between SitecoreAI environments.
 
 ## 4. User Responsibilities
 
@@ -29,7 +29,7 @@ You are responsible for:
 ### 4.2 Acceptable Use
 You agree not to:
 - Use the Application to access environments you are not authorized to access.
-- Attempt to circumvent any security measures of the Application or Sitecore XM Cloud.
+- Attempt to circumvent any security measures of the Application or SitecoreAI.
 - Use the Application in any manner that could damage, disable, or impair Sitecore services.
 - Reverse engineer, decompile, or disassemble any portion of the Application, except as permitted by applicable law.
 
@@ -63,7 +63,7 @@ THE APPLICATION IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY
 Wilkerson Consulting does not warrant that:
 - The Application will meet your specific requirements.
 - Migrations will be error-free, complete, or uninterrupted.
-- The Application will be compatible with all Sitecore XM Cloud configurations or versions.
+- The Application will be compatible with all SitecoreAI configurations or versions.
 
 ### 7.3 Content Integrity
 Wilkerson Consulting is not responsible for:

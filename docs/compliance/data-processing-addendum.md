@@ -1,4 +1,4 @@
-# Data Processing Addendum — Rift: Content Migration for Sitecore XM Cloud
+# Data Processing Addendum — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
 **Last Updated:** March 21, 2026
@@ -28,7 +28,7 @@ The Application performs the following processing activities:
 
 | Activity | Data Involved | Duration | Purpose |
 |----------|--------------|----------|---------|
-| Content migration | Sitecore content items that may contain personal data embedded in content fields | Duration of migration operation only (streaming, not stored) | Transfer content between XM Cloud environments |
+| Content migration | Sitecore content items that may contain personal data embedded in content fields | Duration of migration operation only (streaming, not stored) | Transfer content between SitecoreAI environments |
 | Authentication | OAuth client credentials | Duration of API request | Authenticate with Sitecore Cloud services |
 | Logging | IP addresses, timestamps, operation metadata | Per hosting platform retention policy | Security monitoring and audit trail |
 

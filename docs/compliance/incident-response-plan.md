@@ -1,4 +1,4 @@
-# Incident Response Plan — Rift: Content Migration for Sitecore XM Cloud
+# Incident Response Plan — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
 **Last Updated:** March 21, 2026

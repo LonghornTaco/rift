@@ -1,4 +1,4 @@
-# Data Inventory — Rift: Content Migration for Sitecore XM Cloud
+# Data Inventory — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
 **Last Updated:** March 21, 2026
@@ -17,7 +17,7 @@ This document provides a comprehensive inventory of all data processed by the Ri
 | # | Data Element | Storage Key | Data Type | Source | Purpose | Retention | Access Scope | Protection |
 |---|-------------|-------------|-----------|--------|---------|-----------|-------------|------------|
 | 1 | Environment name | `rift:environments` | String | User input | Identify environments in the UI | Until user deletes | User's browser only | Browser same-origin policy |
-| 2 | CM URL | `rift:environments` | URL string | User input / Sitecore Deploy API | Connect to XM Cloud authoring and management APIs | Until user deletes | User's browser only | Browser same-origin policy; validated against `*.sitecorecloud.io` |
+| 2 | CM URL | `rift:environments` | URL string | User input / Sitecore Deploy API | Connect to SitecoreAI authoring and management APIs | Until user deletes | User's browser only | Browser same-origin policy; validated against `*.sitecorecloud.io` |
 | 3 | OAuth Client ID | `rift:environments` | String | User input | Authenticate with Sitecore Cloud | Until user deletes | User's browser only | Browser same-origin policy; masked in UI (last 4 chars only) |
 | 4 | OAuth Client Secret | `rift:environments` | String | User input | Authenticate with Sitecore Cloud | Until user deletes | User's browser only | Browser same-origin policy |
 | 5 | Migration preset names | `rift:presets` | String | User input | Label saved migration configurations | Until user deletes | User's browser only | Browser same-origin policy |
@@ -33,7 +33,7 @@ This document provides a comprehensive inventory of all data processed by the Ri
 | 10 | OAuth access tokens | String | Sitecore Cloud auth API | Authorize API requests | Browser session only (React state) | Not persisted; cleared on page unload |
 | 11 | Content tree nodes | Array of objects | Sitecore Authoring GraphQL API | Display content tree for selection | Browser session only (React state) | Not persisted |
 | 12 | Site discovery results | Array of objects | Sitecore Authoring GraphQL API | Display available sites | Browser session only (React state) | Not persisted |
-| 13 | XM Cloud projects list | Array of objects | Sitecore Deploy API | Environment setup wizard | Browser session only (React state) | Not persisted |
+| 13 | SitecoreAI projects list | Array of objects | Sitecore Deploy API | Environment setup wizard | Browser session only (React state) | Not persisted |
 | 14 | Migration progress messages | Array of objects | Server streaming response | Real-time progress display | Browser session only (React state) | Not persisted |
 
 ### 2.3 Server-Side Transient Data (Streaming)

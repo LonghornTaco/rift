@@ -1,4 +1,4 @@
-# API Documentation — Rift: Content Migration for Sitecore XM Cloud
+# API Documentation — Rift: Content Migration for SitecoreAI
 
 **Version:** 1.0.0
 **Last Updated:** March 21, 2026
@@ -57,7 +57,7 @@ Exchanges Sitecore OAuth client credentials for an access token.
 
 ### POST /api/rift/projects
 
-Lists XM Cloud projects accessible to the authenticated user.
+Lists SitecoreAI projects accessible to the authenticated user.
 
 **Request Body:**
 ```json
@@ -80,7 +80,7 @@ Returns the raw project data from the Sitecore Deploy API.
 
 ### POST /api/rift/environments
 
-Lists environments within a specific XM Cloud project.
+Lists environments within a specific SitecoreAI project.
 
 **Request Body:**
 ```json
@@ -131,7 +131,7 @@ Discovers Sitecore sites (site collections) in an environment.
 | Status | Body | Condition |
 |--------|------|-----------|
 | 400 | `{ "error": "cmUrl and accessToken are required" }` | Missing parameters |
-| 400 | `{ "error": "Invalid cmUrl: must be a valid Sitecore XM Cloud URL" }` | SSRF validation failure |
+| 400 | `{ "error": "Invalid cmUrl: must be a valid SitecoreAI URL" }` | SSRF validation failure |
 | 502 | `{ "error": "sites failed" }` | Upstream error |
 
 ---
