@@ -1,15 +1,17 @@
+// --- Environment types (from Marketplace SDK application.context) ---
+
 export interface RiftEnvironment {
-  id: string;
-  name: string;
-  cmUrl: string;
-  allowWrite: boolean;
-  hasStoredCredentials?: boolean; // UI hint — server is source of truth
+  tenantId: string;
+  tenantDisplayName: string;
+  contextId: string; // preview Context ID — used for all API calls
 }
+
+// --- Migration types ---
 
 export interface MigrationPath {
   itemPath: string;
   itemId: string;
-  scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants' | 'ChildrenOnly' | 'DescendantsOnly';
+  scope: 'SingleItem' | 'ItemAndChildren' | 'ItemAndDescendants';
 }
 
 export interface RiftPreset {
@@ -17,8 +19,8 @@ export interface RiftPreset {
   name: string;
   paths: MigrationPath[];
   lastUsed: string;
-  sourceEnvId?: string;
-  targetEnvId?: string;
+  sourceTenantId?: string;
+  targetTenantId?: string;
   siteRootPath?: string;
 }
 
@@ -40,14 +42,10 @@ export interface SiteInfo {
 export type MigrationLogLevel = 'DEBUG' | 'INFORMATION' | 'WARNING' | 'ERROR';
 
 export interface RiftSettings {
-  batchSize: number;
-  logLevel: MigrationLogLevel;
   parallelPaths: boolean;
 }
 
 export const DEFAULT_SETTINGS: RiftSettings = {
-  batchSize: 200,
-  logLevel: 'INFORMATION',
   parallelPaths: true,
 };
 
@@ -58,14 +56,28 @@ export interface MigrationHistoryEntry {
   targetEnvName: string;
   paths: { itemPath: string; scope: string }[];
   elapsedMs: number;
-  totalItems: number;
-  succeeded: number;
-  failed: number;
-  created: number;
-  updated: number;
   status: 'success' | 'partial' | 'failed';
 }
 
-export type RiftView = 'environments' | 'migrate' | 'presets' | 'history' | 'display';
+export type RiftView = 'migrate' | 'presets' | 'history';
 
-export type ConnectionStatus = 'untested' | 'connected' | 'failed';
+// --- Content Transfer types ---
+
+export type TransferPhase =
+  | 'creating'
+  | 'exporting'
+  | 'downloading'
+  | 'uploading'
+  | 'assembling'
+  | 'consuming'
+  | 'cleanup'
+  | 'complete'
+  | 'error';
+
+export interface TransferProgress {
+  itemPath: string;
+  phase: TransferPhase;
+  chunksTotal?: number;
+  chunksComplete?: number;
+  error?: string;
+}
