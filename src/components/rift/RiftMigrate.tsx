@@ -421,6 +421,22 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       if (credPromptRole === 'source') {
         setSessionId(result.sessionId);
         setSites(fetchedSites);
+
+        // After source is done, check if target also needs credentials
+        if (loadedPreset?.targetEnvId) {
+          const targetEnv = getEnvironments().find((e) => e.id === loadedPreset.targetEnvId);
+          if (!targetEnv?.hasStoredCredentials) {
+            setCredPromptEnvId(loadedPreset.targetEnvId);
+            setCredPromptRole('target');
+            setCredPromptClientId('');
+            setCredPromptClientSecret('');
+            setCredPromptError(null);
+            setCredPromptRemember(false);
+            return;
+          } else {
+            handleTargetEnvChange(loadedPreset.targetEnvId);
+          }
+        }
       } else {
         setTargetSessionId(result.sessionId);
       }
@@ -448,16 +464,19 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       }
     }
     if (loadedPreset.sourceEnvId) {
-      // Only set pendingSiteRootPath if the source env has stored credentials,
-      // otherwise the credential prompt will handle the flow
       const envs = getEnvironments();
       const sourceEnv = envs.find((e) => e.id === loadedPreset.sourceEnvId);
       if (sourceEnv?.hasStoredCredentials && loadedPreset.siteRootPath) {
         setPendingSiteRootPath(loadedPreset.siteRootPath);
       }
       handleEnvChange(loadedPreset.sourceEnvId);
-    }
-    if (loadedPreset.targetEnvId) {
+
+      // Only handle target now if source doesn't need a credential prompt,
+      // otherwise target will be handled after source prompt is submitted
+      if (sourceEnv?.hasStoredCredentials && loadedPreset.targetEnvId) {
+        handleTargetEnvChange(loadedPreset.targetEnvId);
+      }
+    } else if (loadedPreset.targetEnvId) {
       handleTargetEnvChange(loadedPreset.targetEnvId);
     }
   }, [loadedPreset]); // eslint-disable-line react-hooks/exhaustive-deps
