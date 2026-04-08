@@ -35,14 +35,22 @@ describe('fetchTreeChildren', () => {
 });
 
 describe('fetchSites', () => {
-  it('returns sites from listSites query', async () => {
-    const client = mockClient([
-      { id: 's1', name: 'MySite', rootItem: { path: '/sitecore/content/MySite' }, collection: { name: 'Col1' } },
-    ]);
+  it('returns sites with root paths constructed from collections', async () => {
+    const query = vi.fn();
+    // First call: listSites
+    query.mockResolvedValueOnce({
+      data: { data: [{ id: 's1', name: 'MySite', collectionId: 'c1' }] },
+    });
+    // Second call: listCollections
+    query.mockResolvedValueOnce({
+      data: { data: [{ id: 'c1', name: 'MyCollection' }] },
+    });
+    const client = { mutate: vi.fn(), query } as unknown as ClientSDK;
 
     const result = await fetchSites(client, 'ctx-123');
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('MySite');
-    expect(result[0].rootPath).toBe('/sitecore/content/MySite');
+    expect(result[0].rootPath).toBe('/sitecore/content/MyCollection/MySite');
+    expect(result[0].collection).toBe('MyCollection');
   });
 });

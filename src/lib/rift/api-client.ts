@@ -36,24 +36,47 @@ export async function fetchTreeChildren(
 
 /**
  * Fetch sites via XM Apps Sites REST API.
+ * Fetches both sites and collections to construct the full content root path.
  */
 export async function fetchSites(
   client: ClientSDK,
   contextId: string
 ): Promise<(SiteInfo & { collection: string })[]> {
-  const response = await client.query('xmc.xmapp.listSites', {
-    params: { query: { sitecoreContextId: contextId } },
-  });
+  const [sitesResponse, collectionsResponse] = await Promise.all([
+    client.query('xmc.xmapp.listSites', {
+      params: { query: { sitecoreContextId: contextId } },
+    }),
+    client.query('xmc.xmapp.listCollections', {
+      params: { query: { sitecoreContextId: contextId } },
+    }),
+  ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sites = (response.data as any)?.data ?? [];
+  const sites = (sitesResponse.data as any)?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const collections = (collectionsResponse.data as any)?.data ?? [];
+
+  // Build collection ID → name lookup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const collectionMap = new Map<string, string>(
+    collections.map((c: any) => [c.id, c.name])
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return sites
-    .map((s: { name: string; rootItem?: { path: string }; collection?: { name: string } }) => ({
-      name: s.name,
-      rootPath: s.rootItem?.path ?? '',
-      collection: s.collection?.name ?? '',
-    }))
-    .filter((s: { rootPath: string }) => s.rootPath !== '');
+    .filter((s: any) => s.name)
+    .map((s: any) => {
+      const collectionName = collectionMap.get(s.collectionId) ?? '';
+      // XM Cloud convention: /sitecore/content/<CollectionName>/<SiteName>
+      const rootPath = collectionName
+        ? `/sitecore/content/${collectionName}/${s.name}`
+        : `/sitecore/content/${s.name}`;
+      return {
+        name: s.name,
+        rootPath,
+        collection: collectionName,
+      };
+    });
 }
 
 /**
