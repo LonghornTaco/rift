@@ -7,8 +7,8 @@ import {
   saveEnvironment,
   deleteEnvironment,
 } from '@/lib/rift/storage';
-import { authenticate } from '@/lib/rift/sitecore-auth';
-import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList } from '@/lib/rift/api-client';
+import { authenticate, authenticateFromStored } from '@/lib/rift/sitecore-auth';
+import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList, storeCredentialsApi, deleteCredentialsApi, checkCredentialsApi } from '@/lib/rift/api-client';
 import type { ProjectOption, EnvironmentOption } from '@/lib/rift/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,15 +43,8 @@ import { cn } from '@/lib/utils';
 const emptyEnv: Omit<RiftEnvironment, 'id'> = {
   name: '',
   cmUrl: '',
-  clientId: '',
-  clientSecret: '',
   allowWrite: true,
 };
-
-function maskClientId(clientId: string): string {
-  const last4 = clientId.slice(-4);
-  return `****-****-${last4}`;
-}
 
 type ModalStep = 'credentials' | 'select';
 
@@ -83,6 +76,14 @@ export function RiftEnvironments() {
   const [envCmUrl, setEnvCmUrl] = useState('');
   const [allowWrite, setAllowWrite] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [rememberCredentials, setRememberCredentials] = useState(false);
+  const [showRememberModal, setShowRememberModal] = useState(false);
+  const [reconnectEnvId, setReconnectEnvId] = useState<string | null>(null);
+  const [reconnectClientId, setReconnectClientId] = useState('');
+  const [reconnectClientSecret, setReconnectClientSecret] = useState('');
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [credentialStatuses, setCredentialStatuses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setEnvironments(getEnvironments());
@@ -91,6 +92,18 @@ export function RiftEnvironments() {
   function refreshEnvironments() {
     setEnvironments(getEnvironments());
   }
+
+  useEffect(() => {
+    async function checkAllCredentials() {
+      const envs = getEnvironments();
+      const statuses: Record<string, boolean> = {};
+      for (const env of envs) {
+        statuses[env.id] = env.hasStoredCredentials ?? false;
+      }
+      setCredentialStatuses(statuses);
+    }
+    checkAllCredentials();
+  }, [environments]);
 
   function resetAddModalState() {
     setStep('credentials');
@@ -106,6 +119,7 @@ export function RiftEnvironments() {
     setEnvName('');
     setEnvCmUrl('');
     setAllowWrite(true);
+    setRememberCredentials(false);
   }
 
   function openAddModal() {
@@ -119,8 +133,6 @@ export function RiftEnvironments() {
     setFormData({
       name: env.name,
       cmUrl: env.cmUrl,
-      clientId: env.clientId,
-      clientSecret: env.clientSecret,
       allowWrite: env.allowWrite,
     });
     setShowModal(true);
@@ -143,17 +155,22 @@ export function RiftEnvironments() {
   }
 
   async function handleSaveNew() {
-    const env: RiftEnvironment = {
-      id: crypto.randomUUID(),
-      name: envName,
-      cmUrl: envCmUrl,
-      clientId,
-      clientSecret,
-      allowWrite,
-    };
-    await saveEnvironment(env);
-    refreshEnvironments();
-    closeModal();
+    if (rememberCredentials) {
+      const env: RiftEnvironment = {
+        id: crypto.randomUUID(),
+        name: envName,
+        cmUrl: envCmUrl,
+        allowWrite,
+        hasStoredCredentials: true,
+      };
+      await storeCredentialsApi(env.id, clientId, clientSecret);
+      saveEnvironment(env);
+      refreshEnvironments();
+      closeModal();
+    } else {
+      // Ephemeral — don't save environment, just authenticate for this session
+      closeModal();
+    }
   }
 
   async function handleConnect() {
@@ -217,11 +234,18 @@ export function RiftEnvironments() {
       return next;
     });
     try {
-      await authenticate(env.clientId, env.clientSecret, env.id, env.cmUrl, env.name);
+      if (env.hasStoredCredentials) {
+        await authenticateFromStored(env.id, env.cmUrl, env.name);
+      } else {
+        // No stored credentials — can't test. Show reconnect prompt.
+        setConnectionStatuses((prev) => ({ ...prev, [env.id]: 'failed' }));
+        setTestError((prev) => ({ ...prev, [env.id]: 'No credentials stored. Use Reconnect.' }));
+        setTestingId(null);
+        return;
+      }
       setConnectionStatuses((prev) => ({ ...prev, [env.id]: 'connected' }));
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : 'Connection failed';
+      const message = err instanceof Error ? err.message : 'Connection failed';
       setConnectionStatuses((prev) => ({ ...prev, [env.id]: 'failed' }));
       setTestError((prev) => ({ ...prev, [env.id]: message }));
     } finally {
@@ -229,10 +253,66 @@ export function RiftEnvironments() {
     }
   }
 
+  async function handleForgetCredentials(envId: string) {
+    try {
+      await deleteCredentialsApi(envId);
+      const env = environments.find((e) => e.id === envId);
+      if (env) {
+        saveEnvironment({ ...env, hasStoredCredentials: false });
+      }
+      setCredentialStatuses((prev) => ({ ...prev, [envId]: false }));
+      setConnectionStatuses((prev) => ({ ...prev, [envId]: 'untested' }));
+      refreshEnvironments();
+    } catch (err) {
+      console.error('[Rift] Failed to forget credentials:', err);
+    }
+  }
+
+  function openReconnect(envId: string) {
+    setReconnectEnvId(envId);
+    setReconnectClientId('');
+    setReconnectClientSecret('');
+    setReconnectError(null);
+    setRememberCredentials(false);
+  }
+
+  async function handleReconnect() {
+    if (!reconnectEnvId) return;
+    setIsReconnecting(true);
+    setReconnectError(null);
+    try {
+      const env = environments.find((e) => e.id === reconnectEnvId);
+      if (!env) return;
+
+      await authenticate(reconnectClientId, reconnectClientSecret, env.id, env.cmUrl, env.name);
+
+      if (rememberCredentials) {
+        await storeCredentialsApi(env.id, reconnectClientId, reconnectClientSecret);
+        saveEnvironment({ ...env, hasStoredCredentials: true });
+        setCredentialStatuses((prev) => ({ ...prev, [env.id]: true }));
+      }
+
+      setConnectionStatuses((prev) => ({ ...prev, [env.id]: 'connected' }));
+      setReconnectEnvId(null);
+      refreshEnvironments();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Reconnect failed';
+      setReconnectError(message);
+    } finally {
+      setIsReconnecting(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleteConfirmId) return;
-    await deleteEnvironment(deleteConfirmId);
+    await deleteCredentialsApi(deleteConfirmId).catch(() => {});
+    deleteEnvironment(deleteConfirmId);
     setConnectionStatuses((prev) => {
+      const next = { ...prev };
+      delete next[deleteConfirmId];
+      return next;
+    });
+    setCredentialStatuses((prev) => {
       const next = { ...prev };
       delete next[deleteConfirmId];
       return next;
@@ -262,28 +342,6 @@ export function RiftEnvironments() {
             value={formData.cmUrl}
             onChange={(e) =>
               setFormData((f) => ({ ...f, cmUrl: e.target.value }))
-            }
-          />
-        </div>
-
-        <div>
-          <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
-          <Input
-            type="text"
-            value={formData.clientId}
-            onChange={(e) =>
-              setFormData((f) => ({ ...f, clientId: e.target.value }))
-            }
-          />
-        </div>
-
-        <div>
-          <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
-          <Input
-            type="password"
-            value={formData.clientSecret}
-            onChange={(e) =>
-              setFormData((f) => ({ ...f, clientSecret: e.target.value }))
             }
           />
         </div>
@@ -433,6 +491,23 @@ export function RiftEnvironments() {
                 Read Only
               </Label>
             </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={rememberCredentials}
+                onCheckedChange={(checked) => {
+                  if (checked === true) {
+                    setShowRememberModal(true);
+                  } else {
+                    setRememberCredentials(false);
+                  }
+                }}
+                id="rememberCredsNew"
+              />
+              <Label htmlFor="rememberCredsNew" className="text-sm text-foreground">
+                Remember Credentials
+              </Label>
+            </div>
           </>
         )}
 
@@ -506,9 +581,13 @@ export function RiftEnvironments() {
                 {env.cmUrl}
               </div>
 
-              {/* Masked Client ID */}
+              {/* Credential status */}
               <div className="text-xs text-muted-foreground">
-                {maskClientId(env.clientId)}
+                {env.hasStoredCredentials ? (
+                  <span className="text-green-600 dark:text-green-400">Credentials stored</span>
+                ) : (
+                  <span className="text-amber-600 dark:text-amber-400">No credentials</span>
+                )}
               </div>
 
               {/* Source-only badge (always rendered for consistent card height) */}
@@ -523,31 +602,35 @@ export function RiftEnvironments() {
               </div>
 
               {/* Button row */}
-              <div className="flex gap-2 mt-1">
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => handleTest(env)}
-                  disabled={isTesting}
-                  className="text-primary"
-                >
-                  {isTesting ? 'Testing...' : 'Test'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => openEditModal(env)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  colorScheme="danger"
-                  onClick={() => setDeleteConfirmId(env.id)}
-                >
-                  Delete
-                </Button>
+              <div className="flex gap-2 mt-1 flex-wrap">
+                {env.hasStoredCredentials ? (
+                  <>
+                    <Button variant="outline" size="xs" onClick={() => handleTest(env)} disabled={isTesting} className="text-primary">
+                      {isTesting ? 'Testing...' : 'Test'}
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
+                      Edit
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => handleForgetCredentials(env.id)}>
+                      Forget Credentials
+                    </Button>
+                    <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
+                      Delete
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" size="xs" className="text-primary" onClick={() => openReconnect(env.id)}>
+                      Reconnect
+                    </Button>
+                    <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
+                      Edit
+                    </Button>
+                    <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
+                      Delete
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -583,6 +666,83 @@ export function RiftEnvironments() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remember Credentials info modal */}
+      <AlertDialog open={showRememberModal} onOpenChange={(open) => { if (!open) setShowRememberModal(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Credential Storage</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your credentials will be encrypted and stored securely on our servers. Only the application can access them — no person can view or retrieve your credentials. You can delete them at any time from the Environments page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowRememberModal(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setRememberCredentials(true); setShowRememberModal(false); }}>
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reconnect dialog */}
+      <Dialog open={!!reconnectEnvId} onOpenChange={(open) => { if (!open) setReconnectEnvId(null); }}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>Reconnect Environment</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Client ID</Label>
+              <Input
+                type="text"
+                value={reconnectClientId}
+                onChange={(e) => setReconnectClientId(e.target.value)}
+                placeholder="Enter your Sitecore Client ID"
+              />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold text-foreground mb-1">Client Secret</Label>
+              <Input
+                type="password"
+                value={reconnectClientSecret}
+                onChange={(e) => setReconnectClientSecret(e.target.value)}
+                placeholder="Enter your Sitecore Client Secret"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={rememberCredentials}
+                onCheckedChange={(checked) => {
+                  if (checked === true) {
+                    setShowRememberModal(true);
+                  } else {
+                    setRememberCredentials(false);
+                  }
+                }}
+                id="rememberCredsReconnect"
+              />
+              <Label htmlFor="rememberCredsReconnect" className="text-sm text-foreground">
+                Remember Credentials
+              </Label>
+            </div>
+            {reconnectError && (
+              <div className="text-xs text-destructive px-3 py-2 bg-destructive/10 rounded border border-destructive/30">
+                {reconnectError}
+              </div>
+            )}
+            <DialogFooter className="mt-2">
+              <Button variant="outline" onClick={() => setReconnectEnvId(null)}>Cancel</Button>
+              <Button
+                onClick={handleReconnect}
+                disabled={isReconnecting || !reconnectClientId || !reconnectClientSecret}
+              >
+                {isReconnecting ? 'Connecting...' : 'Connect'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
