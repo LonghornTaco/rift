@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+
+import { auth0 } from '@/lib/auth0';
 
 /**
- * CSRF protection middleware for all /api/rift/* routes.
- * Validates that requests originate from the same site by checking
- * the Origin or Referer header against the request's host.
+ * Middleware: Auth0 session handling + CSRF protection for API routes.
  *
- * Structured log output for access control decisions (denied requests).
+ * - /auth/* routes are handled by the Auth0 SDK (login, callback, logout)
+ * - /api/rift/* routes get CSRF origin validation
+ * - All other matched routes pass through Auth0 middleware for session refresh
  */
 
 function logDeny(route: string, clientIp: string, reason: string) {
-  // Structured JSON log — cannot import from @/lib in middleware (edge runtime),
-  // so we inline the log format here.
   console.warn(JSON.stringify({
     timestamp: new Date().toISOString(),
     level: 'WARN',
@@ -30,59 +31,56 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-export function middleware(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  const referer = request.headers.get('referer');
-  const host = request.headers.get('host');
-  const clientIp = getClientIp(request);
-  const route = request.nextUrl.pathname;
+export async function middleware(request: NextRequest) {
+  // Auth0 SDK handles /auth/* routes (login, callback, logout, etc.)
+  // and refreshes session cookies on all matched routes
+  const authResponse = await auth0.middleware(request);
 
-  // Allow requests with no origin/referer (e.g., server-to-server, curl in dev)
-  // In production, browsers always send Origin on POST requests
-  if (!origin && !referer) {
-    return NextResponse.next();
+  // For /auth/* routes, return the Auth0 response directly
+  if (request.nextUrl.pathname.startsWith('/auth/')) {
+    return authResponse;
   }
 
-  // Validate origin matches host
-  if (origin) {
-    try {
-      const originHost = new URL(origin).host;
-      if (originHost !== host) {
-        logDeny(route, clientIp, `Origin mismatch: ${originHost} != ${host}`);
-        return NextResponse.json(
-          { error: 'Forbidden: cross-origin request' },
-          { status: 403 }
-        );
+  // CSRF protection for /api/rift/* routes
+  if (request.nextUrl.pathname.startsWith('/api/rift/')) {
+    const origin = request.headers.get('origin');
+    const referer = request.headers.get('referer');
+    const host = request.headers.get('host');
+    const clientIp = getClientIp(request);
+    const route = request.nextUrl.pathname;
+
+    if (origin || referer) {
+      if (origin) {
+        try {
+          const originHost = new URL(origin).host;
+          if (originHost !== host) {
+            logDeny(route, clientIp, `Origin mismatch: ${originHost} != ${host}`);
+            return NextResponse.json({ error: 'Forbidden: cross-origin request' }, { status: 403 });
+          }
+        } catch {
+          logDeny(route, clientIp, 'Invalid origin header');
+          return NextResponse.json({ error: 'Forbidden: invalid origin' }, { status: 403 });
+        }
+      } else if (referer) {
+        try {
+          const refererHost = new URL(referer).host;
+          if (refererHost !== host) {
+            logDeny(route, clientIp, `Referer mismatch: ${refererHost} != ${host}`);
+            return NextResponse.json({ error: 'Forbidden: cross-origin request' }, { status: 403 });
+          }
+        } catch {
+          logDeny(route, clientIp, 'Invalid referer header');
+          return NextResponse.json({ error: 'Forbidden: invalid referer' }, { status: 403 });
+        }
       }
-    } catch {
-      logDeny(route, clientIp, 'Invalid origin header');
-      return NextResponse.json(
-        { error: 'Forbidden: invalid origin' },
-        { status: 403 }
-      );
-    }
-  } else if (referer) {
-    try {
-      const refererHost = new URL(referer).host;
-      if (refererHost !== host) {
-        logDeny(route, clientIp, `Referer mismatch: ${refererHost} != ${host}`);
-        return NextResponse.json(
-          { error: 'Forbidden: cross-origin request' },
-          { status: 403 }
-        );
-      }
-    } catch {
-      logDeny(route, clientIp, 'Invalid referer header');
-      return NextResponse.json(
-        { error: 'Forbidden: invalid referer' },
-        { status: 403 }
-      );
     }
   }
 
-  return NextResponse.next();
+  return authResponse;
 }
 
 export const config = {
-  matcher: '/api/rift/:path*',
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|rift-logo.svg).*)',
+  ],
 };
