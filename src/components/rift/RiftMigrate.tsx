@@ -642,15 +642,16 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         </Button>
 
         {/* Save Preset */}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!canSavePreset}
-          onClick={handleSavePreset}
-          title={!envsHaveCredentials ? 'Save credentials with "Remember Credentials" to enable presets' : undefined}
-        >
-          {'\u2605'} Save Preset
-        </Button>
+        <span title={!canSavePreset ? (!envsHaveCredentials ? 'Save credentials with "Remember Credentials" to enable presets' : 'Select paths to save as a preset') : undefined}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!canSavePreset}
+            onClick={handleSavePreset}
+          >
+            {'\u2605'} Save Preset
+          </Button>
+        </span>
 
         {/* Start Migration + Settings */}
         <div className="flex items-center gap-2">
