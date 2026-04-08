@@ -17,6 +17,11 @@ interface TransferOptions {
 /**
  * Execute the full Content Transfer API lifecycle for a single path.
  * Exports content from source environment, imports into target environment.
+ *
+ * SDK param conventions:
+ * - path: URL path params (transferId, chunksetId, chunkId)
+ * - query: URL query params (sitecoreContextId, databaseName, fileName, isMedia)
+ * - body: request body (only for POST/PUT — createContentTransfer, saveChunk)
  */
 export async function transferPath(
   client: ClientSDK,
@@ -34,7 +39,7 @@ export async function transferPath(
 
   const report = (phase: TransferPhase, detail?: string) => onProgress?.(phase, detail);
 
-  // Phase 1: Create content transfer on source
+  // Phase 1: Create content transfer on source (POST /content/v1/transfers)
   report('creating');
   const transferId = crypto.randomUUID();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,85 +49,97 @@ export async function transferPath(
       body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId },
     },
   } as any);
-  // The API returns 202 with empty body — use our generated transferId as the operation ID
-  const operationId = transferId;
 
   try {
-    // Phase 2: Poll until export is ready
+    // Phase 2: Poll until export is ready (GET /content/v1/transfers/{transferId}/status)
     report('exporting');
-    const status = await pollUntilReady(client, sourceContextId, operationId, signal);
-    const totalChunks = status.totalChunks ?? 0;
+    const statusResult = await pollUntilReady(client, sourceContextId, transferId, signal);
+    const chunkSets = statusResult.chunkSets;
 
-    // Phase 3: Download chunks from source
+    // Phase 3: Download chunks from source (GET /content/v1/transfers/{transferId}/chunksets/{chunksetId}/chunks/{chunkId})
     report('downloading');
-    const chunks: Blob[] = [];
-    for (let i = 0; i < totalChunks; i++) {
-      signal?.throwIfAborted();
-      report('downloading', `${i + 1}/${totalChunks}`);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const chunkResult = await client.query('xmc.contentTransfer.getChunk', {
-        params: {
-          query: { sitecoreContextId: sourceContextId },
-          body: { operationId, chunkIndex: i },
-        },
-      } as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      chunks.push((chunkResult.data as any)?.data as Blob);
+    const allChunks: { chunksetId: string; chunkId: number; data: Blob }[] = [];
+    let totalChunks = 0;
+    for (const cs of chunkSets) {
+      totalChunks += cs.chunkCount;
+    }
+    let downloaded = 0;
+    for (const cs of chunkSets) {
+      for (let i = 0; i < cs.chunkCount; i++) {
+        signal?.throwIfAborted();
+        downloaded++;
+        report('downloading', `${downloaded}/${totalChunks}`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const chunkResult = await client.query('xmc.contentTransfer.getChunk', {
+          params: {
+            path: { transferId, chunksetId: cs.chunksetId, chunkId: i },
+            query: { sitecoreContextId: sourceContextId },
+          },
+        } as any);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        allChunks.push({ chunksetId: cs.chunksetId, chunkId: i, data: (chunkResult.data as any)?.data as Blob });
+      }
     }
 
-    // Phase 4: Upload chunks to target
+    // Phase 4: Upload chunks to target (PUT /content/v1/transfers/{transferId}/chunksets/{chunksetId}/chunks/{chunkId})
     report('uploading');
-    for (let i = 0; i < chunks.length; i++) {
+    let uploaded = 0;
+    for (const chunk of allChunks) {
       signal?.throwIfAborted();
-      report('uploading', `${i + 1}/${totalChunks}`);
+      uploaded++;
+      report('uploading', `${uploaded}/${totalChunks}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await client.mutate('xmc.contentTransfer.saveChunk', {
         params: {
+          path: { transferId, chunksetId: chunk.chunksetId, chunkId: chunk.chunkId },
           query: { sitecoreContextId: targetContextId },
-          body: { operationId, chunkIndex: i, data: chunks[i] },
+          body: chunk.data,
         },
       } as any);
     }
 
-    // Phase 5: Complete chunk set transfer
+    // Phase 5: Complete chunk set transfer (POST /content/v1/transfers/{transferId}/chunksets/{chunksetId}/complete)
     report('assembling');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const completeResult = await client.mutate('xmc.contentTransfer.completeChunkSetTransfer', {
-      params: {
-        query: { sitecoreContextId: targetContextId },
-        body: { operationId },
-      },
-    } as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fileId = (completeResult.data as any)?.data?.fileId;
-    if (!fileId) throw new Error('completeChunkSetTransfer did not return fileId');
+    const fileIds: string[] = [];
+    for (const cs of chunkSets) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const completeResult = await client.mutate('xmc.contentTransfer.completeChunkSetTransfer', {
+        params: {
+          path: { transferId, chunksetId: cs.chunksetId },
+          query: { sitecoreContextId: targetContextId },
+        },
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (completeResult.data as any)?.data;
+      const fileId = data?.fileName ?? data?.fileId ?? data?.filePath;
+      if (fileId) fileIds.push(fileId);
+    }
+    if (fileIds.length === 0) throw new Error('completeChunkSetTransfer did not return any file identifiers');
 
-    // Phase 6: Consume the .raif file
+    // Phase 6: Consume the .raif files (POST /items/v2/ConsumeFile)
     report('consuming');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const consumeResult = await client.query('xmc.contentTransfer.consumeFile', {
-      params: {
-        query: { sitecoreContextId: targetContextId },
-        body: { databaseName: 'master', fileName: fileId, sitecoreContextId: targetContextId },
-      },
-    } as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const blobId = (consumeResult.data as any)?.data?.blobId;
-    if (!blobId) throw new Error('consumeFile did not return blobId');
+    for (const fileName of fileIds) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await client.query('xmc.contentTransfer.consumeFile', {
+        params: {
+          query: { databaseName: 'master', fileName, sitecoreContextId: targetContextId },
+        },
+      } as any);
 
-    // Phase 7: Poll consume status
-    await pollBlobState(client, targetContextId, blobId, signal);
+      // Phase 7: Poll consume status (GET /items/v2/GetBlobState)
+      await pollBlobState(client, targetContextId, fileName, signal);
+    }
 
     report('complete');
   } finally {
-    // Phase 8: Cleanup — always attempt even on error
+    // Phase 8: Cleanup — always attempt even on error (DELETE /content/v1/transfers/{transferId})
     report('cleanup');
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await client.mutate('xmc.contentTransfer.deleteContentTransfer', {
         params: {
+          path: { transferId },
           query: { sitecoreContextId: sourceContextId },
-          body: { operationId },
         },
       } as any);
     } catch {
@@ -131,30 +148,39 @@ export async function transferPath(
   }
 }
 
+interface ChunkSetInfo {
+  chunksetId: string;
+  chunkCount: number;
+}
+
 async function pollUntilReady(
   client: ClientSDK,
   contextId: string,
-  operationId: string,
+  transferId: string,
   signal?: AbortSignal
-): Promise<{ totalChunks: number }> {
+): Promise<{ chunkSets: ChunkSetInfo[] }> {
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
     signal?.throwIfAborted();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await client.query('xmc.contentTransfer.getContentTransferStatus', {
       params: {
+        path: { transferId },
         query: { sitecoreContextId: contextId },
-        body: { operationId },
       },
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = (result.data as any)?.data;
-    if (data?.State === 'Ready' || data?.State === 'Completed') {
-      const chunkSets = data?.ChunkSetsMetadata ?? [];
-      const totalChunks = chunkSets.reduce((sum: number, cs: { ChunkCount: number }) => sum + cs.ChunkCount, 0);
-      return { totalChunks };
+    const state = data?.State ?? data?.state ?? data?.status;
+    if (state === 'Ready' || state === 'Completed' || state === 'Complete') {
+      const rawChunkSets = data?.ChunkSetsMetadata ?? data?.chunkSetsMetadata ?? data?.chunkSets ?? [];
+      const chunkSets: ChunkSetInfo[] = rawChunkSets.map((cs: any) => ({
+        chunksetId: cs.ChunkSetId ?? cs.chunkSetId ?? cs.id,
+        chunkCount: cs.ChunkCount ?? cs.chunkCount ?? cs.totalChunks ?? 0,
+      }));
+      return { chunkSets };
     }
-    if (data?.State === 'Failed') {
-      throw new Error(`Content transfer export failed: ${data?.error ?? 'unknown error'}`);
+    if (state === 'Failed' || state === 'Error') {
+      throw new Error(`Content transfer export failed: ${data?.error ?? data?.Error ?? 'unknown error'}`);
     }
     await delay(POLL_INTERVAL_MS);
   }
@@ -164,7 +190,7 @@ async function pollUntilReady(
 async function pollBlobState(
   client: ClientSDK,
   contextId: string,
-  blobId: string,
+  fileName: string,
   signal?: AbortSignal
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
@@ -172,16 +198,15 @@ async function pollBlobState(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await client.query('xmc.contentTransfer.getBlobState', {
       params: {
-        query: { sitecoreContextId: contextId },
-        body: { fileName: blobId, sitecoreContextId: contextId },
+        query: { fileName, sitecoreContextId: contextId },
       },
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = (result.data as any)?.data;
-    const state = data?.status ?? data?.state;
+    const state = data?.status ?? data?.state ?? data?.State;
     if (state === 'Complete' || state === 'Completed') return;
-    if (state === 'Failed') {
-      throw new Error(`Content consume failed: ${data?.error ?? 'unknown error'}`);
+    if (state === 'Failed' || state === 'Error') {
+      throw new Error(`Content consume failed: ${data?.error ?? data?.Error ?? 'unknown error'}`);
     }
     await delay(POLL_INTERVAL_MS);
   }
