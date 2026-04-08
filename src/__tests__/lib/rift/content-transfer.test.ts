@@ -12,7 +12,9 @@ describe('transferPath', () => {
   it('executes the full 8-step lifecycle', async () => {
     const { client, mutate, query } = createMockClient();
 
-    // createContentTransfer — returns 202 with empty data
+    // createContentTransfer on source — returns 202 with empty data
+    mutate.mockResolvedValueOnce({ data: { data: {} } });
+    // createContentTransfer on target — returns 202 with empty data
     mutate.mockResolvedValueOnce({ data: { data: {} } });
     // getContentTransferStatus — ready with 1 chunkset containing 1 chunk
     query.mockResolvedValueOnce({ data: { data: { State: 'Ready', ChunkSetsMetadata: [{ ChunkSetId: 'cs-1', ChunkCount: 1 }] } } });
@@ -21,12 +23,13 @@ describe('transferPath', () => {
     // saveChunk
     mutate.mockResolvedValueOnce({ data: { data: { success: true } } });
     // completeChunkSetTransfer
-    mutate.mockResolvedValueOnce({ data: { data: { fileName: 'file-1.raif' } } });
+    mutate.mockResolvedValueOnce({ data: { data: { ContentTransferFileName: 'file-1.raif' } } });
     // consumeFile (registered as query in SDK despite being POST)
     query.mockResolvedValueOnce({ data: { data: { success: true } } });
-    // getBlobState — complete
-    query.mockResolvedValueOnce({ data: { data: { status: 'Complete' } } });
-    // deleteContentTransfer
+    // getBlobState — OK per schema
+    query.mockResolvedValueOnce({ data: { data: { status: 'OK' } } });
+    // deleteContentTransfer (source + target via allSettled)
+    mutate.mockResolvedValueOnce({ data: { data: { success: true } } });
     mutate.mockResolvedValueOnce({ data: { data: { success: true } } });
 
     const progressUpdates: string[] = [];
@@ -40,7 +43,7 @@ describe('transferPath', () => {
       onProgress,
     });
 
-    expect(mutate).toHaveBeenCalledTimes(4); // create, saveChunk, completeChunkSet, deleteTransfer
+    expect(mutate).toHaveBeenCalledTimes(6); // createSource, createTarget, saveChunk, completeChunkSet, deleteSource, deleteTarget
     expect(query).toHaveBeenCalledTimes(4); // getStatus, getChunk, consumeFile, getBlobState
     expect(progressUpdates).toContain('creating');
     expect(progressUpdates).toContain('complete');

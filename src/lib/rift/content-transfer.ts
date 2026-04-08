@@ -39,7 +39,8 @@ export async function transferPath(
 
   const report = (phase: TransferPhase, detail?: string) => onProgress?.(phase, detail);
 
-  // Phase 1: Create content transfer on source (POST /content/v1/transfers)
+  // Phase 1: Create content transfer on BOTH source and target
+  // The source needs the transfer to export; the target needs it to accept chunks
   report('creating');
   const transferId = crypto.randomUUID();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +48,14 @@ export async function transferPath(
     params: {
       query: { sitecoreContextId: sourceContextId },
       body: { configuration: { dataTrees: [{ itemPath, scope, mergeStrategy }] }, transferId },
+    },
+  } as any);
+  // Create matching transfer on target so it can receive chunks
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await client.mutate('xmc.contentTransfer.createContentTransfer', {
+    params: {
+      query: { sitecoreContextId: targetContextId },
+      body: { configuration: { dataTrees: [] }, transferId },
     },
   } as any);
 
@@ -111,7 +120,7 @@ export async function transferPath(
       } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = (completeResult.data as any)?.data;
-      const fileId = data?.fileName ?? data?.fileId ?? data?.filePath;
+      const fileId = data?.ContentTransferFileName ?? data?.fileName ?? data?.fileId;
       if (fileId) fileIds.push(fileId);
     }
     if (fileIds.length === 0) throw new Error('completeChunkSetTransfer did not return any file identifiers');
@@ -132,16 +141,19 @@ export async function transferPath(
 
     report('complete');
   } finally {
-    // Phase 8: Cleanup — always attempt even on error (DELETE /content/v1/transfers/{transferId})
+    // Phase 8: Cleanup — delete transfer from both source and target
     report('cleanup');
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await client.mutate('xmc.contentTransfer.deleteContentTransfer', {
-        params: {
-          path: { transferId },
-          query: { sitecoreContextId: sourceContextId },
-        },
-      } as any);
+      await Promise.allSettled([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        client.mutate('xmc.contentTransfer.deleteContentTransfer', {
+          params: { path: { transferId }, query: { sitecoreContextId: sourceContextId } },
+        } as any),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        client.mutate('xmc.contentTransfer.deleteContentTransfer', {
+          params: { path: { transferId }, query: { sitecoreContextId: targetContextId } },
+        } as any),
+      ]);
     } catch {
       // Cleanup failure is non-fatal
     }
@@ -204,9 +216,9 @@ async function pollBlobState(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = (result.data as any)?.data;
     const state = data?.status ?? data?.state ?? data?.State;
-    if (state === 'Complete' || state === 'Completed') return;
-    if (state === 'Failed' || state === 'Error') {
-      throw new Error(`Content consume failed: ${data?.error ?? data?.Error ?? 'unknown error'}`);
+    if (state === 'OK' || state === 'Complete' || state === 'Completed') return;
+    if (state === 'Error' || state === 'Failed') {
+      throw new Error(`Content consume failed: ${JSON.stringify(data?.details ?? data?.error ?? 'unknown error')}`);
     }
     await delay(POLL_INTERVAL_MS);
   }
