@@ -1,7 +1,7 @@
 # Terms of Service — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 23, 2026
-**Last Updated:** March 23, 2026
+**Last Updated:** April 8, 2026
 **Developer:** Wilkerson Consulting
 
 ---
@@ -12,7 +12,7 @@ By installing, accessing, or using Rift ("the Application"), you agree to be bou
 
 ## 2. Description of Service
 
-Rift is a content migration tool for SitecoreAI that enables users to transfer content between SitecoreAI environments. The Application operates as a standalone web application within the Sitecore Marketplace ecosystem.
+Rift is a content migration tool for SitecoreAI that enables users to transfer content between SitecoreAI environments. The Application operates as a standalone web application within the Sitecore Marketplace ecosystem. Authentication is handled entirely by Sitecore's identity infrastructure via Auth0 — the same trust model used by native Sitecore applications.
 
 ## 3. License
 
@@ -20,11 +20,14 @@ Subject to these Terms, Wilkerson Consulting grants you a limited, non-exclusive
 
 ## 4. User Responsibilities
 
-### 4.1 Account and Credentials
+### 4.1 Account and Access
+
 You are responsible for:
-- Maintaining the confidentiality of any Sitecore credentials entered into the Application.
+- Maintaining the security of your Sitecore account, which is used to authenticate with the Application via Auth0.
 - Ensuring you have proper authorization to access the source and target environments used in migrations.
-- All activity that occurs using credentials you provide to the Application.
+- All migration activity performed under your authenticated Sitecore identity.
+
+Rift does not collect or store your Sitecore credentials. You authenticate using your existing Sitecore identity through a "Sign in with Sitecore" flow managed by Sitecore's Auth0 provider. Rift never receives your password or client secrets.
 
 ### 4.2 Acceptable Use
 You agree not to:
@@ -41,13 +44,20 @@ You are solely responsible for:
 
 ## 5. Data Handling
 
-### 5.1 No Server-Side Storage
-The Application does not store your data on any server. All environment configurations, credentials, presets, and settings are stored locally in your browser. Content data is streamed during migration and is not retained.
+### 5.1 No Credential Storage
 
-### 5.2 Credential Security
-Credentials are encrypted in your browser using AES-256-GCM encryption before being stored in localStorage. The encryption key is stored in IndexedDB and is non-extractable. Despite these measures, you acknowledge that client-side storage carries inherent risks and you use the Application at your own discretion.
+Rift does not collect, store, or encrypt any Sitecore credentials. Authentication is performed entirely through Sitecore's Marketplace SDK, which delegates to Sitecore's Auth0 identity provider. Auth tokens are managed by the SDK and are never stored or accessed by Rift.
 
-### 5.3 Privacy
+### 5.2 Client-Side Storage
+
+The Application stores only user preferences (migration presets, settings, history) in browser `localStorage`. No credentials, tokens, or sensitive identity data are stored by the Application.
+
+### 5.3 Content Transfer
+
+Content migration is performed via Sitecore's Content Transfer API, which handles chunked transfer of `.raif` files between environments. Content data is not retained by Rift beyond the duration of the transfer operation.
+
+### 5.4 Privacy
+
 Your use of the Application is subject to our [Privacy Policy](privacy-policy.md), which describes how we handle information in connection with the Application.
 
 ## 6. Intellectual Property
@@ -88,7 +98,7 @@ You agree to indemnify, defend, and hold harmless Wilkerson Consulting from and 
 ## 10. Termination
 
 ### 10.1 By You
-You may stop using the Application at any time. To remove all Application data, clear your browser's localStorage and IndexedDB for the Application's domain.
+You may stop using the Application at any time. To remove all Application data, clear your browser's `localStorage` for the Application's domain. Session state managed by the Marketplace SDK (Auth0 tokens) is handled by Sitecore's infrastructure independently.
 
 ### 10.2 By Wilkerson Consulting
 We may suspend or terminate your access to the Application at any time, with or without cause, and with or without notice.

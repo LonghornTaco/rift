@@ -1,7 +1,7 @@
 # Data Inventory — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
-**Last Updated:** March 21, 2026
+**Last Updated:** April 8, 2026
 **Developer:** Wilkerson Consulting
 
 ---
@@ -10,79 +10,86 @@
 
 This document provides a comprehensive inventory of all data processed by the Rift application, as required by the Sitecore Marketplace security checklist. It covers data collection, storage, processing, and deletion across all components of the Application.
 
+Authentication is handled entirely by Sitecore's Marketplace SDK via Auth0. Rift does not collect, store, or process Sitecore credentials of any kind. Auth tokens are managed exclusively by the Marketplace SDK and are never accessed or retained by Rift code.
+
 ## 2. Data Inventory
 
 ### 2.1 Client-Side Persistent Data (Browser localStorage)
 
 | # | Data Element | Storage Key | Data Type | Source | Purpose | Retention | Access Scope | Protection |
 |---|-------------|-------------|-----------|--------|---------|-----------|-------------|------------|
-| 1 | Environment name | `rift:environments` | String | User input | Identify environments in the UI | Until user deletes | User's browser only | Browser same-origin policy |
-| 2 | CM URL | `rift:environments` | URL string | User input / Sitecore Deploy API | Connect to SitecoreAI authoring and management APIs | Until user deletes | User's browser only | Browser same-origin policy; validated against `*.sitecorecloud.io` |
-| 3 | OAuth Client ID | `rift:environments` | String | User input | Authenticate with Sitecore Cloud | Until user deletes | User's browser only | Browser same-origin policy; masked in UI (last 4 chars only) |
-| 4 | OAuth Client Secret | `rift:environments` | String | User input | Authenticate with Sitecore Cloud | Until user deletes | User's browser only | Browser same-origin policy |
-| 5 | Migration preset names | `rift:presets` | String | User input | Label saved migration configurations | Until user deletes | User's browser only | Browser same-origin policy |
-| 6 | Migration paths and scopes | `rift:presets` | Array of objects | User selection from content tree | Define content to migrate | Until user deletes | User's browser only | Browser same-origin policy |
-| 7 | Preset last-used timestamp | `rift:presets` | ISO 8601 string | System-generated | Display recency in UI | Until user deletes | User's browser only | Browser same-origin policy |
-| 8 | Batch size setting | `rift:settings` | Number | User input | Control migration batch size | Until user deletes | User's browser only | Browser same-origin policy |
-| 9 | Dark mode preference | `rift:darkMode` | Boolean string | User input | UI theme | Until user deletes | User's browser only | Browser same-origin policy |
+| 1 | Migration preset names | `rift:presets` | String | User input | Label saved migration configurations | Until user deletes | User's browser only | Browser same-origin policy |
+| 2 | Migration paths and scopes | `rift:presets` | Array of objects | User selection from content tree | Define content to migrate | Until user deletes | User's browser only | Browser same-origin policy |
+| 3 | Preset last-used timestamp | `rift:presets` | ISO 8601 string | System-generated | Display recency in UI | Until user deletes | User's browser only | Browser same-origin policy |
+| 4 | Batch size setting | `rift:settings` | Number | User input | Control migration batch size | Until user deletes | User's browser only | Browser same-origin policy |
+| 5 | Dark mode preference | `rift:darkMode` | Boolean string | User input | UI theme | Until user deletes | User's browser only | Browser same-origin policy |
+| 6 | Migration history | `rift:history` | Array of objects | System-generated | Display recent migrations | Until user deletes | User's browser only | Browser same-origin policy |
+
+No credentials, environment secrets, or auth tokens are stored in `localStorage`. Environment identity (tenant/environment) is derived at runtime via the Marketplace SDK's `application.context` → `resourceAccess`.
 
 ### 2.2 Client-Side Transient Data (Browser Memory)
 
 | # | Data Element | Data Type | Source | Purpose | Retention | Protection |
 |---|-------------|-----------|--------|---------|-----------|------------|
-| 10 | OAuth access tokens | String | Sitecore Cloud auth API | Authorize API requests | Browser session only (React state) | Not persisted; cleared on page unload |
-| 11 | Content tree nodes | Array of objects | Sitecore Authoring GraphQL API | Display content tree for selection | Browser session only (React state) | Not persisted |
-| 12 | Site discovery results | Array of objects | Sitecore Authoring GraphQL API | Display available sites | Browser session only (React state) | Not persisted |
-| 13 | SitecoreAI projects list | Array of objects | Sitecore Deploy API | Environment setup wizard | Browser session only (React state) | Not persisted |
-| 14 | Migration progress messages | Array of objects | Server streaming response | Real-time progress display | Browser session only (React state) | Not persisted |
+| 7 | Auth0 access tokens | String | Marketplace SDK (Auth0) | Authorize Sitecore API calls | Managed by Marketplace SDK; not stored by Rift | Managed by SDK; never persisted by Rift |
+| 8 | XM Cloud tenant/environment list | Array of objects | Marketplace SDK `application.context` → `resourceAccess` | Populate environment selectors | Browser session only (React state) | Not persisted |
+| 9 | Content tree nodes | Array of objects | Sitecore Authoring GraphQL API (via SDK) | Display content tree for selection | Browser session only (React state) | Not persisted |
+| 10 | Site discovery results | Array of objects | Marketplace SDK `xmc.xmapp.listSites` | Display available sites | Browser session only (React state) | Not persisted |
+| 11 | Content Transfer operation IDs | String | Sitecore Content Transfer API | Track in-progress transfer operations | Duration of transfer operation only | Not persisted; ephemeral |
+| 12 | Migration progress messages | Array of objects | Marketplace SDK / Content Transfer API | Real-time progress display | Browser session only (React state) | Not persisted |
 
-### 2.3 Server-Side Transient Data (Streaming)
+### 2.3 Data Processed via Sitecore Infrastructure (Not Stored by Rift)
 
-| # | Data Element | Data Type | Source | Purpose | Retention | Protection |
-|---|-------------|-----------|--------|---------|-----------|------------|
-| 15 | Serialized content items | JSON objects | Sitecore Management GraphQL API (source) | Stream to target environment | Zero — streamed, never stored | TLS in transit; not cached or logged |
-| 16 | Content item IDs (target) | Set of strings | Sitecore Management GraphQL API (target) | Determine create vs. update | Duration of request only | TLS in transit; garbage collected after request |
+| # | Data Element | Data Type | Source | Purpose | Retention by Rift | Infrastructure |
+|---|-------------|-----------|--------|---------|-------------------|---------------|
+| 13 | Content export chunks (.raif) | Binary (Protobuf) | Sitecore Content Transfer API | Transfer serialized content between environments | Zero — streamed via Content Transfer API | Sitecore-managed |
+| 14 | Content Transfer staging data | Binary | Sitecore Content Transfer API | Assemble and deliver export packages | Zero — managed by Sitecore API | Sitecore-managed |
 
 ### 2.4 Server Logs
 
 | # | Data Element | Data Type | Source | Purpose | Retention | Access Scope | Protection |
 |---|-------------|-----------|--------|---------|-----------|-------------|------------|
-| 17 | Client IP address | String | Request headers (`x-forwarded-for`) | Rate limiting; security audit trail | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
-| 18 | Authentication events | JSON log entry | Application logger | Security audit — track successful and failed auth attempts | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
-| 19 | Access control decisions | JSON log entry | CSRF middleware | Security audit — track denied cross-origin requests | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
-| 20 | Migration operation metadata | JSON log entry | Migration route handler | Security audit — track migration start, completion, and errors | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
+| 15 | Client IP address | String | Request headers (`x-forwarded-for`) | Rate limiting; security audit trail | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
+| 16 | Access control decisions | JSON log entry | Middleware | Security audit — track denied requests | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
+| 17 | Migration operation metadata | JSON log entry | Migration handler | Security audit — track migration start, completion, and errors | Per hosting platform policy | Platform operators | Structured JSON logs; platform-managed storage |
 
 ## 3. Data Flow Diagram
 
 ```
-User's Browser                          Rift Server (Vercel)                    Sitecore Cloud
-┌─────────────────┐                    ┌─────────────────┐                    ┌─────────────────┐
-│                 │                    │                 │                    │                 │
-│  localStorage   │───credentials────>│  API Routes     │───OAuth────────────>│  auth.sitecore  │
-│  (environments, │                    │  (stateless)    │<──access token─────│  cloud.io       │
-│   presets,      │                    │                 │                    │                 │
-│   settings)     │                    │                 │───GraphQL──────────>│  [env].sitecore │
-│                 │<──content tree─────│                 │<──content data─────│  cloud.io       │
-│  React State    │                    │                 │                    │                 │
-│  (tokens,       │                    │  Logs ────────> │  Hosting Platform  │                 │
-│   tree nodes,   │                    │  (structured    │  Log Storage       │                 │
-│   progress)     │                    │   JSON, UTC)    │                    │                 │
-└─────────────────┘                    └─────────────────┘                    └─────────────────┘
+User's Browser                          Marketplace SDK / Sitecore Cloud
+┌─────────────────────────────────┐    ┌─────────────────────────────────────┐
+│                                 │    │                                     │
+│  localStorage                   │    │  Auth0 (Sitecore-managed)           │
+│  (presets, settings, history)   │    │  — authorization code flow          │
+│                                 │    │  — token management (SDK only)      │
+│  React State                    │    │                                     │
+│  (tree nodes, site list,        │───>│  application.context.resourceAccess │
+│   operation IDs, progress)      │<───│  — XM Cloud tenant/env discovery    │
+│                                 │    │                                     │
+│                                 │───>│  xmc.authoring.graphql              │
+│                                 │<───│  — content tree browsing            │
+│                                 │    │                                     │
+│                                 │───>│  xmc.xmapp.listSites                │
+│                                 │<───│  — site listing                     │
+│                                 │    │                                     │
+│                                 │───>│  Content Transfer API               │
+│                                 │<───│  — chunked .raif export/import      │
+└─────────────────────────────────┘    └─────────────────────────────────────┘
 ```
 
 ## 4. Data Classification
 
 | Classification | Data Elements | Handling Requirements |
 |---------------|--------------|----------------------|
-| **Confidential** | OAuth client secrets (#4), access tokens (#10) | Encrypt in transit; minimize retention; do not log |
-| **Internal** | Client IDs (#3), CM URLs (#2), content data (#15) | Encrypt in transit; mask in UI where appropriate |
-| **Public** | Environment names (#1), preset names (#5), UI preferences (#8, #9) | Standard handling |
+| **Confidential** | Auth0 access tokens (#7) — managed by SDK, never accessed by Rift | SDK-managed; not logged; not stored |
+| **Internal** | Content Transfer operation IDs (#11), content data (#13, #14) | Encrypt in transit; ephemeral only |
+| **Public** | Preset names (#1), migration paths (#2), UI preferences (#4, #5) | Standard handling |
 
 ## 5. Regulatory Considerations
 
 | Regulation | Applicability | Compliance Measures |
 |-----------|--------------|-------------------|
-| **GDPR** | Applies if users or content subjects are in the EU/EEA | DPA available; DSAR process documented; data minimization practiced |
+| **GDPR** | Applies if users or content subjects are in the EU/EEA | DPA available; DSAR process documented; data minimization practiced; no credential data collected |
 | **CCPA** | Applies if users are California residents | Privacy Policy includes CCPA disclosures; deletion rights supported |
 | **HIPAA** | Not applicable | Application does not process health information by design |
 

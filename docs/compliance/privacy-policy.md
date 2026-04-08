@@ -1,7 +1,7 @@
 # Privacy Policy — Rift: Content Migration for SitecoreAI
 
 **Effective Date:** March 21, 2026
-**Last Updated:** March 21, 2026
+**Last Updated:** April 8, 2026
 **Developer:** Wilkerson Consulting
 **Contact:** jasonmwilkerson@hotmail.com
 
@@ -17,34 +17,39 @@ Rift ("the Application") is a content migration tool for SitecoreAI that enables
 
 | Data Type | Description | Purpose |
 |-----------|-------------|---------|
-| Sitecore Client Credentials | OAuth client ID and client secret for SitecoreAI environments | Authenticate with Sitecore APIs to perform content migration |
-| Environment Configuration | Environment names, CM URLs | Identify and connect to SitecoreAI instances |
 | Migration Paths | Sitecore content tree paths and migration scope selections | Define which content items to migrate |
 | Migration Presets | Saved migration configurations (paths, scopes, environment references) | Allow users to save and reuse migration configurations |
+
+Rift does **not** collect, receive, or store Sitecore credentials (client IDs, client secrets, or passwords) of any kind. Authentication is handled entirely by Sitecore's Marketplace SDK via Auth0. Users authenticate with their existing Sitecore identity through a standard "Sign in with Sitecore" redirect — Rift never sees or touches the credentials involved.
 
 ### 2.2 Data Processed Transiently
 
 | Data Type | Description | Purpose |
 |-----------|-------------|---------|
-| OAuth Access Tokens | Short-lived tokens obtained from Sitecore Cloud authentication | Authorize API requests during a session |
-| Sitecore Content Data | Serialized content items pulled from source environments | Transfer content to target environments |
+| Auth0 Access Tokens | Short-lived tokens managed entirely by the Marketplace SDK | Authorize Sitecore API calls during a session |
+| Sitecore Content Data | Serialized content items (.raif chunks) transferred between environments via the Content Transfer API | Transfer content to target environments |
 | Migration Logs | Status messages, error details, item counts | Provide real-time progress feedback to the user |
+
+Auth0 tokens are managed exclusively by the Marketplace SDK. Rift code does not read, store, or transmit these tokens directly.
 
 ### 2.3 Data We Do NOT Collect
 
+- Sitecore credentials (client IDs, client secrets, passwords)
 - Personal information (names, email addresses, phone numbers)
 - Usage analytics or telemetry
 - Device metadata or browser fingerprints
-- Cookies for tracking purposes
+- Cookies of any kind
 - Any data from end-users of the Sitecore websites being migrated
 
 ## 3. How We Use Information
 
 All data collected is used exclusively for the purpose of performing content migration between SitecoreAI environments. Specifically:
 
-- **Authentication:** Client credentials are used solely to obtain access tokens from Sitecore Cloud authentication services.
-- **Content Migration:** Content data is read from a source environment and written to a target environment. Content data is not stored, cached, or retained by the Application beyond the duration of the migration operation.
-- **Configuration Persistence:** Environment configurations and migration presets are stored locally in the user's browser to enable reuse across sessions.
+- **Authentication:** Users authenticate with Sitecore via Auth0 through the Marketplace SDK. Rift does not participate in the credential exchange.
+- **Environment Discovery:** The Marketplace SDK's `application.context` provides access to the authenticated user's XM Cloud tenants via `resourceAccess`. No separate credential input is required.
+- **Content Browsing:** Content trees and site listings are retrieved via the Marketplace SDK's Authoring GraphQL API (`xmc.authoring.graphql`) and `xmc.xmapp.listSites`.
+- **Content Migration:** Content data is transferred between environments using the Sitecore Content Transfer API (chunked `.raif` files). Content data is not stored, cached, or retained by the Application beyond the duration of the migration operation.
+- **Configuration Persistence:** Migration presets and settings are stored locally in the user's browser to enable reuse across sessions.
 
 ## 4. Data Storage and Retention
 
@@ -54,20 +59,22 @@ All persistent application data is stored in the user's browser via `localStorag
 
 | Storage Key | Contents | Retention |
 |-------------|----------|-----------|
-| `rift:environments` | Environment configurations including credentials | Until manually deleted by user |
 | `rift:presets` | Saved migration presets | Until manually deleted by user |
 | `rift:settings` | Application settings (batch size) | Until manually deleted by user |
 | `rift:darkMode` | Theme preference | Until manually deleted by user |
+| `rift:history` | Recent migration history | Until manually deleted by user |
+
+No credentials, auth tokens, or sensitive identity data are stored in `localStorage` or anywhere else by Rift.
 
 ### 4.2 Server-Side Storage
 
-The Application does **not** maintain any server-side database, file storage, or persistent data store. All server-side processing is stateless and transient.
+The Application does **not** maintain any server-side database, file storage, or persistent data store. All data flows through the Sitecore Marketplace SDK infrastructure and the Sitecore Content Transfer API.
 
 ### 4.3 Transient Data
 
-- OAuth access tokens are held in browser memory only during an active session and are not persisted.
-- Sitecore content data is streamed through the server during migration and is not stored, cached, or logged.
-- Structured server logs (authentication events, access control decisions, migration operations) are written to the hosting platform's log infrastructure and retained according to the hosting provider's policies.
+- Auth0 tokens are managed by the Marketplace SDK and are not accessible to or stored by Rift.
+- Sitecore content data (.raif chunks) is transferred via the Content Transfer API and is not cached or logged by Rift.
+- Structured server logs (access control decisions, migration operations) are written to the hosting platform's log infrastructure and retained according to the hosting provider's policies.
 
 ## 5. Data Sharing and Disclosure
 
@@ -77,10 +84,10 @@ Data is transmitted only to the following Sitecore-operated services as required
 
 | Service | Endpoint | Purpose |
 |---------|----------|---------|
-| Sitecore Cloud Authentication | `auth.sitecorecloud.io` | OAuth token exchange |
-| SitecoreAI Deploy API | `xmclouddeploy-api.sitecorecloud.io` | Project and environment discovery |
-| SitecoreAI Authoring API | `[environment].sitecorecloud.io/sitecore/api/authoring/graphql/v1` | Content tree browsing and metadata |
-| SitecoreAI Management API | `[environment].sitecorecloud.io/sitecore/api/management` | Content serialization and migration |
+| Sitecore Auth0 (via Marketplace SDK) | Sitecore-managed Auth0 tenant | User authentication (authorization code flow) |
+| Sitecore Marketplace SDK | SDK-managed infrastructure | Environment discovery, content browsing, token management |
+| SitecoreAI Authoring GraphQL API | `[environment].sitecorecloud.io/sitecore/api/authoring/graphql/v1` | Content tree browsing and site listing |
+| Sitecore Content Transfer API | Sitecore-managed transfer infrastructure | Chunked content export and import (.raif files) |
 
 ## 6. Data Protection Measures
 
@@ -91,14 +98,12 @@ Data is transmitted only to the following Sitecore-operated services as required
 
 ### 6.2 Data at Rest
 - Client-side data in `localStorage` is protected by the browser's same-origin policy.
-- The Application does not store data on the server side.
+- No credentials or auth tokens are stored client-side or server-side by Rift.
 - The hosting environment (Vercel) provides full-disk encryption for all infrastructure.
 
 ### 6.3 Application Security
 - Content Security Policy (CSP) headers restrict script execution and data exfiltration.
-- CSRF protection validates request origins on all API endpoints.
-- Rate limiting protects against brute-force authentication attempts.
-- Input validation prevents injection attacks on all API parameters.
+- Authentication trust is inherited from Sitecore's Auth0 identity provider — the same trust model used by native Sitecore applications.
 
 ## 7. User Rights and Data Control
 
@@ -107,9 +112,11 @@ Users can view all stored data directly in their browser's developer tools under
 
 ### 7.2 Deletion
 Users can delete all stored data by:
-- Using the Application's built-in environment and preset management interfaces to remove individual items.
+- Using the Application's built-in preset management interface to remove individual items.
 - Clearing browser `localStorage` for the Application's domain.
 - Uninstalling the Application, which removes all associated browser storage.
+
+For identity and session data managed by Auth0, users should refer to Sitecore's identity and privacy documentation.
 
 ### 7.3 Data Portability
 Migration presets can be exported and imported through the Application's preset management interface.
@@ -123,7 +130,7 @@ The Application is intended for use by Sitecore administrators and developers. I
 
 ## 9. International Data Transfers
 
-The Application processes data in the region where it is deployed. Content data is transferred between SitecoreAI environments, which may be located in different geographic regions as configured by the user's Sitecore organization.
+The Application processes data in the region where it is deployed. Content data is transferred between SitecoreAI environments, which may be located in different geographic regions as configured by the user's Sitecore organization. Authentication is handled by Sitecore's Auth0 tenant, subject to Sitecore's data processing terms.
 
 ## 10. Changes to This Policy
 
