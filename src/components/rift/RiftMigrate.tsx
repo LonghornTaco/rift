@@ -330,6 +330,8 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         if (env.hasStoredCredentials) {
           result = await authenticateFromStored(env.id, env.cmUrl, env.name);
         } else {
+          setIsLoadingSites(false);
+          setIsRestoringPreset(false);
           setCredPromptEnvId(env.id);
           setCredPromptRole('source');
           setCredPromptClientId('');
@@ -402,9 +404,16 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         saveEnvironment({ ...env, hasStoredCredentials: true });
       }
 
+      // Validate credentials have access to this CM environment by fetching sites
+      let fetchedSites;
+      try {
+        fetchedSites = await fetchSites();
+      } catch {
+        throw new Error('These credentials do not have access to this environment. Please verify you are using the correct credentials.');
+      }
+
       if (credPromptRole === 'source') {
         setSessionId(result.sessionId);
-        const fetchedSites = await fetchSites();
         setSites(fetchedSites);
       } else {
         setTargetSessionId(result.sessionId);

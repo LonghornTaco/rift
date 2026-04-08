@@ -79,6 +79,8 @@ export function Rift() {
   const handleSetupComplete = () => {
     setShowSetup(false);
     setActiveView('migrate');
+    setMigrateMode('workspace');
+    setLoadedPreset(null);
   };
 
   const handleNavClick = (view: RiftView) => {
@@ -258,15 +260,6 @@ export function Rift() {
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     size="sm"
-                    onClick={() => { setShowFeedback(true); setFeedbackText(''); setFeedbackCategory('general'); }}
-                  >
-                    <span className="w-5 text-center inline-block shrink-0">{'\uD83D\uDCE8'}</span>
-                    <span>Feedback</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    size="sm"
                     onClick={() => setShowAbout(true)}
                   >
                     <span className="w-5 text-center inline-block shrink-0">{'\u2139\uFE0F'}</span>
@@ -366,7 +359,7 @@ export function Rift() {
             <div className="text-xs text-muted-foreground space-y-1">
               <div><span className="font-medium text-foreground">Version:</span> 1.0.0</div>
               <div><span className="font-medium text-foreground">Author:</span> Wilkerson Consulting</div>
-              <div><span className="font-medium text-foreground">Website:</span> <a href="https://rift-app.dev" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">rift-app.dev</a></div>
+              <div><span className="font-medium text-foreground">Website:</span> <a href="https://riftapp.dev" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">riftapp.dev</a></div>
             </div>
             <div className="text-[10px] text-muted-foreground/60 mt-6">
               &copy; 2026 Wilkerson Consulting. All rights reserved.

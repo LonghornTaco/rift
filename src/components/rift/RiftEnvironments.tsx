@@ -8,7 +8,7 @@ import {
   deleteEnvironment,
 } from '@/lib/rift/storage';
 import { authenticate, authenticateFromStored } from '@/lib/rift/sitecore-auth';
-import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList, storeCredentialsApi, deleteCredentialsApi, checkCredentialsApi } from '@/lib/rift/api-client';
+import { fetchProjects, fetchEnvironments, fetchSites, parseProjectList, parseEnvironmentList, storeCredentialsApi, deleteCredentialsApi, checkCredentialsApi } from '@/lib/rift/api-client';
 import type { ProjectOption, EnvironmentOption } from '@/lib/rift/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,7 @@ export function RiftEnvironments() {
   const [envCmUrl, setEnvCmUrl] = useState('');
   const [allowWrite, setAllowWrite] = useState(true);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [rememberCredentials, setRememberCredentials] = useState(false);
   const [showRememberModal, setShowRememberModal] = useState(false);
   const [reconnectEnvId, setReconnectEnvId] = useState<string | null>(null);
@@ -286,6 +287,13 @@ export function RiftEnvironments() {
 
       await authenticate(reconnectClientId, reconnectClientSecret, env.id, env.cmUrl, env.name);
 
+      // Validate credentials have access to this specific CM environment
+      try {
+        await fetchSites();
+      } catch {
+        throw new Error('These credentials do not have access to this environment. Please verify you are using the correct credentials.');
+      }
+
       if (rememberCredentials) {
         await storeCredentialsApi(env.id, reconnectClientId, reconnectClientSecret);
         saveEnvironment({ ...env, hasStoredCredentials: true });
@@ -305,20 +313,25 @@ export function RiftEnvironments() {
 
   async function confirmDelete() {
     if (!deleteConfirmId) return;
-    await deleteCredentialsApi(deleteConfirmId).catch(() => {});
-    deleteEnvironment(deleteConfirmId);
-    setConnectionStatuses((prev) => {
-      const next = { ...prev };
-      delete next[deleteConfirmId];
-      return next;
-    });
-    setCredentialStatuses((prev) => {
-      const next = { ...prev };
-      delete next[deleteConfirmId];
-      return next;
-    });
-    setDeleteConfirmId(null);
-    refreshEnvironments();
+    setIsDeleting(true);
+    try {
+      await deleteCredentialsApi(deleteConfirmId).catch(() => {});
+      deleteEnvironment(deleteConfirmId);
+      setConnectionStatuses((prev) => {
+        const next = { ...prev };
+        delete next[deleteConfirmId];
+        return next;
+      });
+      setCredentialStatuses((prev) => {
+        const next = { ...prev };
+        delete next[deleteConfirmId];
+        return next;
+      });
+      setDeleteConfirmId(null);
+      refreshEnvironments();
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   function renderEditModal() {
@@ -601,35 +614,41 @@ export function RiftEnvironments() {
                 <span>{'\uD83D\uDD12'} Source only</span>
               </div>
 
-              {/* Button row */}
-              <div className="flex gap-2 mt-1 flex-wrap">
-                {env.hasStoredCredentials ? (
-                  <>
-                    <Button variant="outline" size="xs" onClick={() => handleTest(env)} disabled={isTesting} className="text-primary">
-                      {isTesting ? 'Testing...' : 'Test'}
-                    </Button>
-                    <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
-                      Edit
-                    </Button>
+              {/* Button rows */}
+              <div className="flex flex-col gap-1.5 mt-1">
+                <div className="flex gap-2">
+                  {env.hasStoredCredentials ? (
+                    <>
+                      <Button variant="outline" size="xs" onClick={() => handleTest(env)} disabled={isTesting} className="text-primary">
+                        {isTesting ? 'Testing...' : 'Test'}
+                      </Button>
+                      <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
+                        Delete
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="xs" className="text-primary" onClick={() => openReconnect(env.id)}>
+                        Reconnect
+                      </Button>
+                      <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {env.hasStoredCredentials && (
+                  <div className="flex gap-2">
                     <Button variant="outline" size="xs" onClick={() => handleForgetCredentials(env.id)}>
                       Forget Credentials
                     </Button>
-                    <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
-                      Delete
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button variant="outline" size="xs" className="text-primary" onClick={() => openReconnect(env.id)}>
-                      Reconnect
-                    </Button>
-                    <Button variant="outline" size="xs" onClick={() => openEditModal(env)}>
-                      Edit
-                    </Button>
-                    <Button variant="outline" size="xs" colorScheme="danger" onClick={() => setDeleteConfirmId(env.id)}>
-                      Delete
-                    </Button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -650,7 +669,7 @@ export function RiftEnvironments() {
       </Dialog>
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteConfirmId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Environment</AlertDialogTitle>
@@ -659,9 +678,9 @@ export function RiftEnvironments() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-white hover:bg-destructive/90">
-              Delete
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={isDeleting} className="bg-destructive text-white hover:bg-destructive/90">
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
