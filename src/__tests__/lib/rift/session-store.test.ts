@@ -6,10 +6,13 @@ vi.mock('@azure/identity', () => ({
 }));
 
 vi.mock('@azure/keyvault-keys', () => {
-  const mockEncrypt = vi.fn().mockResolvedValue({ result: Buffer.from('encrypted-data') });
-  const mockDecrypt = vi.fn().mockImplementation((_alg: string, data: Uint8Array) => ({
-    result: data, // echo back for test simplicity
-  }));
+  // Mock encrypt captures the plaintext so decrypt can return it (preserving AES key length)
+  const mockEncrypt = vi.fn().mockImplementation((_alg: string, data: Uint8Array) =>
+    Promise.resolve({ result: Buffer.from(data) }),
+  );
+  const mockDecrypt = vi.fn().mockImplementation((_alg: string, data: Uint8Array) =>
+    Promise.resolve({ result: Buffer.from(data) }),
+  );
   return {
     KeyClient: class MockKeyClient {
       getKey = vi.fn().mockResolvedValue({ id: 'https://kv/keys/rift-session-key/123' });
