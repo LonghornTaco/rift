@@ -313,34 +313,40 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       setSessionId(null);
       setAuthError(null);
 
-      if (!envId) return;
+      if (!envId) {
+        setIsRestoringPreset(false);
+        return;
+      }
 
-      const envs = await getEnvironments();
+      const envs = getEnvironments();
       const env = envs.find((e) => e.id === envId);
-      if (!env) return;
+      if (!env) {
+        setIsRestoringPreset(false);
+        setPendingSiteRootPath(null);
+        return;
+      }
 
       // Clear target if it matches the new source
       if (selectedTargetEnvId === envId) {
         setSelectedTargetEnvId(null);
       }
 
+      if (!env.hasStoredCredentials) {
+        setIsRestoringPreset(false);
+        setPendingSiteRootPath(null);
+        setCredPromptEnvId(env.id);
+        setCredPromptRole('source');
+        setCredPromptClientId('');
+        setCredPromptClientSecret('');
+        setCredPromptError(null);
+        setCredPromptRemember(false);
+        return;
+      }
+
       try {
         setIsLoadingSites(true);
         let result;
-        if (env.hasStoredCredentials) {
-          result = await authenticateFromStored(env.id, env.cmUrl, env.name);
-        } else {
-          setIsLoadingSites(false);
-          setIsRestoringPreset(false);
-          setPendingSiteRootPath(null);
-          setCredPromptEnvId(env.id);
-          setCredPromptRole('source');
-          setCredPromptClientId('');
-          setCredPromptClientSecret('');
-          setCredPromptError(null);
-          setCredPromptRemember(false);
-          return;
-        }
+        result = await authenticateFromStored(env.id, env.cmUrl, env.name);
         setSessionId(result.sessionId);
         const fetchedSites = await fetchSites();
         setSites(fetchedSites);
@@ -359,26 +365,25 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const handleTargetEnvChange = useCallback(async (envId: string) => {
     setSelectedTargetEnvId(envId);
     setTargetSessionId(null);
-    const envs = await getEnvironments();
+    const envs = getEnvironments();
     const env = envs.find((e) => e.id === envId);
-    if (env) {
-      try {
-        let result;
-        if (env.hasStoredCredentials) {
-          result = await authenticateFromStored(env.id, env.cmUrl, env.name);
-        } else {
-          setCredPromptEnvId(env.id);
-          setCredPromptRole('target');
-          setCredPromptClientId('');
-          setCredPromptClientSecret('');
-          setCredPromptError(null);
-          setCredPromptRemember(false);
-          return;
-        }
-        setTargetSessionId(result.sessionId);
-      } catch {
-        setAuthError('Failed to authenticate target environment');
-      }
+    if (!env) return;
+
+    if (!env.hasStoredCredentials) {
+      setCredPromptEnvId(env.id);
+      setCredPromptRole('target');
+      setCredPromptClientId('');
+      setCredPromptClientSecret('');
+      setCredPromptError(null);
+      setCredPromptRemember(false);
+      return;
+    }
+
+    try {
+      const result = await authenticateFromStored(env.id, env.cmUrl, env.name);
+      setTargetSessionId(result.sessionId);
+    } catch {
+      setAuthError('Failed to authenticate target environment');
     }
   }, []);
 
@@ -443,13 +448,17 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
       }
     }
     if (loadedPreset.sourceEnvId) {
+      // Only set pendingSiteRootPath if the source env has stored credentials,
+      // otherwise the credential prompt will handle the flow
+      const envs = getEnvironments();
+      const sourceEnv = envs.find((e) => e.id === loadedPreset.sourceEnvId);
+      if (sourceEnv?.hasStoredCredentials && loadedPreset.siteRootPath) {
+        setPendingSiteRootPath(loadedPreset.siteRootPath);
+      }
       handleEnvChange(loadedPreset.sourceEnvId);
     }
     if (loadedPreset.targetEnvId) {
       handleTargetEnvChange(loadedPreset.targetEnvId);
-    }
-    if (loadedPreset.siteRootPath) {
-      setPendingSiteRootPath(loadedPreset.siteRootPath);
     }
   }, [loadedPreset]); // eslint-disable-line react-hooks/exhaustive-deps
 
