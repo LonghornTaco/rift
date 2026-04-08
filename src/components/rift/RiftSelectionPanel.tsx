@@ -27,8 +27,6 @@ const scopeValues: { label: string; value: MigrationPath['scope'] }[] = [
   { label: 'Item Only', value: 'SingleItem' },
   { label: 'Item + Children', value: 'ItemAndChildren' },
   { label: 'Item + Descendants', value: 'ItemAndDescendants' },
-  { label: 'Children Only', value: 'ChildrenOnly' },
-  { label: 'Descendants Only', value: 'DescendantsOnly' },
 ];
 
 export function RiftSelectionPanel({

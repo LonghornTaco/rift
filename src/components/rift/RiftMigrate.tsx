@@ -516,8 +516,6 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
           sourceName={environments.find((e) => e.tenantId === selectedSourceEnvId)?.tenantDisplayName ?? selectedSourceEnvId}
           targetName={environments.find((e) => e.tenantId === selectedTargetEnvId)?.tenantDisplayName ?? selectedTargetEnvId}
           paths={selectedPaths}
-          recycleOrphans={false}
-          onRecycleOrphansChange={() => {}}
           onCancel={() => setShowConfirmDialog(false)}
           onConfirm={() => {
             setShowConfirmDialog(false);

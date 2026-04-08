@@ -11,33 +11,25 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 
 interface RiftConfirmDialogProps {
   sourceName: string;
   targetName: string;
   paths: MigrationPath[];
-  recycleOrphans: boolean;
-  onRecycleOrphansChange: (checked: boolean) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-const scopeLabels: Record<MigrationPath['scope'], string> = {
+const scopeLabels: Record<string, string> = {
   SingleItem: 'Item only',
   ItemAndChildren: 'Item + children',
   ItemAndDescendants: 'Item + descendants',
-  ChildrenOnly: 'Children only',
-  DescendantsOnly: 'Descendants only',
 };
 
 export function RiftConfirmDialog({
   sourceName,
   targetName,
   paths,
-  recycleOrphans,
-  onRecycleOrphansChange,
   onConfirm,
   onCancel,
 }: RiftConfirmDialogProps) {
@@ -79,17 +71,6 @@ export function RiftConfirmDialog({
               <p className="text-sm text-destructive">
                 This will overwrite existing content in <strong>{targetName}</strong>.
               </p>
-
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="recycle-orphans"
-                  checked={recycleOrphans}
-                  onCheckedChange={(checked) => onRecycleOrphansChange(checked === true)}
-                />
-                <Label htmlFor="recycle-orphans" className="text-sm text-foreground cursor-pointer">
-                  Recycle items on target that no longer exist on source
-                </Label>
-              </div>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
