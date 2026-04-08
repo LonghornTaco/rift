@@ -133,17 +133,17 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   }
 
   async function handleStep1Next() {
+    const env: RiftEnvironment = {
+      id: crypto.randomUUID(),
+      name: step1EnvName,
+      cmUrl: step1CmUrl,
+      allowWrite: step1AllowWrite,
+      hasStoredCredentials: rememberCredentials,
+    };
     if (rememberCredentials) {
-      const env: RiftEnvironment = {
-        id: crypto.randomUUID(),
-        name: step1EnvName,
-        cmUrl: step1CmUrl,
-        allowWrite: step1AllowWrite,
-        hasStoredCredentials: true,
-      };
       await storeCredentialsApi(env.id, clientId, clientSecret);
-      saveEnvironment(env);
     }
+    saveEnvironment(env);
 
     setSavedClientId(clientId);
     setSavedClientSecret(clientSecret);
@@ -226,17 +226,17 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   }
 
   async function handleStep2Finish() {
+    const env: RiftEnvironment = {
+      id: crypto.randomUUID(),
+      name: step2EnvName,
+      cmUrl: step2CmUrl,
+      allowWrite: step2AllowWrite,
+      hasStoredCredentials: rememberCredentials,
+    };
     if (rememberCredentials) {
-      const env: RiftEnvironment = {
-        id: crypto.randomUUID(),
-        name: step2EnvName,
-        cmUrl: step2CmUrl,
-        allowWrite: step2AllowWrite,
-        hasStoredCredentials: true,
-      };
       await storeCredentialsApi(env.id, clientId, clientSecret);
-      saveEnvironment(env);
     }
+    saveEnvironment(env);
     onComplete();
   }
 
