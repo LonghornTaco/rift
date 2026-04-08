@@ -1,208 +1,95 @@
+import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TreeNode, SiteInfo } from './types';
 
-interface FetchTreeResult {
-  children: TreeNode[];
-}
+/**
+ * Fetch children of a tree node via Authoring GraphQL API.
+ */
+export async function fetchTreeChildren(
+  client: ClientSDK,
+  contextId: string,
+  parentPath: string
+): Promise<TreeNode[]> {
+  const query = {
+    query: `query GetChildren($path: String!) {
+      item(where: { path: $path }) {
+        children { nodes { itemId name path hasChildren template { name } } }
+      }
+    }`,
+    variables: { path: parentPath },
+  };
 
-export async function fetchTreeChildren(parentPath: string): Promise<TreeNode[]> {
-  const res = await fetch('/api/rift/tree', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parentPath }),
+  const response = await client.mutate('xmc.authoring.graphql', {
+    params: { query: { sitecoreContextId: contextId }, body: query },
   });
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Tree fetch failed (${res.status})`);
-  }
-
-  const result: FetchTreeResult = await res.json();
-  return result.children;
-}
-
-interface FetchSitesResult {
-  sites: (SiteInfo & { collection: string })[];
-}
-
-export async function fetchSites(): Promise<(SiteInfo & { collection: string })[]> {
-  const res = await fetch('/api/rift/sites', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Sites fetch failed (${res.status})`);
-  }
-
-  const result: FetchSitesResult = await res.json();
-  return result.sites;
-}
-
-export async function fetchProjects(): Promise<unknown[]> {
-  const res = await fetch('/api/rift/projects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Projects fetch failed (${res.status})`);
-  }
-
-  return res.json();
-}
-
-interface ItemFieldsResult {
-  itemId: string;
-  name: string;
-  path: string;
-  templateId: string;
-  templateName: string;
-  fields: Record<string, string>;
-}
-
-export async function fetchItemFields(
-  itemPath: string,
-  fieldNames: string[] = []
-): Promise<ItemFieldsResult> {
-  const res = await fetch('/api/rift/item-fields', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ itemPath, fieldNames }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Item fields fetch failed (${res.status})`);
-  }
-
-  return res.json();
-}
-
-export async function fetchEnvironments(projectId: string): Promise<unknown[]> {
-  const res = await fetch('/api/rift/environments', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Environments fetch failed (${res.status})`);
-  }
-
-  return res.json();
-}
-
-// --- Shared parsing helpers for Deploy API responses ---
-
-/** Defensively extract a string property from an unknown object */
-function getString(obj: unknown, ...keys: string[]): string {
-  if (obj && typeof obj === 'object') {
-    const rec = obj as Record<string, unknown>;
-    for (const key of keys) {
-      if (typeof rec[key] === 'string') return rec[key] as string;
-    }
-  }
-  return '';
-}
-
-export interface ProjectOption {
-  id: string;
-  name: string;
-}
-
-export interface EnvironmentOption {
-  id: string;
-  name: string;
-  host: string;
-}
-
-/** Parse raw Deploy API project response into ProjectOption[] */
-export function parseProjectList(rawProjects: unknown): ProjectOption[] {
-  const projectList = Array.isArray(rawProjects)
-    ? rawProjects
-    : Array.isArray((rawProjects as Record<string, unknown>)?.data)
-      ? ((rawProjects as Record<string, unknown>).data as unknown[])
-      : [];
-
-  const parsed: ProjectOption[] = [];
-  for (const p of projectList) {
-    const id = getString(p, 'id');
-    const name = getString(p, 'name');
-    if (id) parsed.push({ id, name: name || id });
-  }
-  return parsed;
+  const nodes = response.data?.data?.item?.children?.nodes ?? [];
+  return nodes.map((n: { itemId: string; name: string; path: string; hasChildren: boolean; template: { name: string } }) => ({
+    itemId: n.itemId,
+    name: n.name,
+    path: n.path,
+    hasChildren: n.hasChildren,
+    templateName: n.template?.name ?? '',
+  }));
 }
 
 /**
- * Parse raw Deploy API environment response into EnvironmentOption[].
- * Filters to only CM environments belonging to the specified project,
- * since the Deploy API ignores the projectId query parameter.
+ * Fetch sites via XM Apps Sites REST API.
  */
-/** Store credentials server-side for an environment */
-export async function storeCredentialsApi(
-  envId: string,
-  clientId: string,
-  clientSecret: string
-): Promise<void> {
-  const res = await fetch('/api/rift/credentials', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ envId, clientId, clientSecret, action: 'store' }),
+export async function fetchSites(
+  client: ClientSDK,
+  contextId: string
+): Promise<(SiteInfo & { collection: string })[]> {
+  const response = await client.query('xmc.xmapp.listSites', {
+    params: { query: { sitecoreContextId: contextId } },
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to store credentials');
-  }
+
+  const sites = response.data?.data ?? [];
+  return sites.map((s: { name: string; rootItem?: { path: string }; collection?: { name: string } }) => ({
+    name: s.name,
+    rootPath: s.rootItem?.path ?? '',
+    collection: s.collection?.name ?? '',
+  }));
 }
 
-/** Check if credentials are stored server-side for an environment */
-export async function checkCredentialsApi(envId: string): Promise<boolean> {
-  const res = await fetch('/api/rift/credentials', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ envId, action: 'check' }),
+/**
+ * Fetch item fields via Authoring GraphQL API.
+ */
+export async function fetchItemFields(
+  client: ClientSDK,
+  contextId: string,
+  itemPath: string
+): Promise<{ itemId: string; name: string; path: string; templateId: string; templateName: string; fields: Record<string, string> }> {
+  const query = {
+    query: `query GetItemFields($path: String!) {
+      item(where: { path: $path }) {
+        itemId name path
+        template { templateId: itemId name }
+        fields(ownFields: true, excludeStandardFields: true) {
+          nodes { name value }
+        }
+      }
+    }`,
+    variables: { path: itemPath },
+  };
+
+  const response = await client.mutate('xmc.authoring.graphql', {
+    params: { query: { sitecoreContextId: contextId }, body: query },
   });
-  if (!res.ok) return false;
-  const data = await res.json();
-  return data.hasCredentials === true;
-}
 
-/** Delete stored credentials for an environment */
-export async function deleteCredentialsApi(envId: string): Promise<void> {
-  const res = await fetch('/api/rift/credentials', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ envId, action: 'delete' }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || 'Failed to delete credentials');
+  const item = response.data?.data?.item;
+  if (!item) throw new Error(`Item not found: ${itemPath}`);
+
+  const fields: Record<string, string> = {};
+  for (const f of item.fields?.nodes ?? []) {
+    fields[f.name] = f.value;
   }
-}
 
-export function parseEnvironmentList(rawEnvs: unknown, forProjectId: string): EnvironmentOption[] {
-  const envList = Array.isArray(rawEnvs)
-    ? rawEnvs
-    : Array.isArray((rawEnvs as Record<string, unknown>)?.data)
-      ? ((rawEnvs as Record<string, unknown>).data as unknown[])
-      : [];
-
-  const parsed: EnvironmentOption[] = [];
-  for (const e of envList) {
-    const id = getString(e, 'id');
-    const name = getString(e, 'name');
-    const host = getString(e, 'host');
-    const envProjectId = getString(e, 'projectId');
-    const envType = getString(e, 'type');
-    if (envProjectId && envProjectId !== forProjectId) continue;
-    if (envType && envType !== 'cm') continue;
-    const cmUrl = host ? `https://${host}` : '';
-    if (id) parsed.push({ id, name: name || id, host: cmUrl });
-  }
-  return parsed;
+  return {
+    itemId: item.itemId,
+    name: item.name,
+    path: item.path,
+    templateId: item.template?.templateId ?? '',
+    templateName: item.template?.name ?? '',
+    fields,
+  };
 }
