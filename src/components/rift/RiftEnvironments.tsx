@@ -157,18 +157,18 @@ export function RiftEnvironments() {
   }
 
   async function handleSaveNew() {
-    const env: RiftEnvironment = {
-      id: crypto.randomUUID(),
-      name: envName,
-      cmUrl: envCmUrl,
-      allowWrite,
-      hasStoredCredentials: rememberCredentials,
-    };
     if (rememberCredentials) {
+      const env: RiftEnvironment = {
+        id: crypto.randomUUID(),
+        name: envName,
+        cmUrl: envCmUrl,
+        allowWrite,
+        hasStoredCredentials: true,
+      };
       await storeCredentialsApi(env.id, clientId, clientSecret);
+      saveEnvironment(env);
+      refreshEnvironments();
     }
-    saveEnvironment(env);
-    refreshEnvironments();
     closeModal();
   }
 

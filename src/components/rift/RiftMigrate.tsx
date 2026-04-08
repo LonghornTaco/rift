@@ -488,7 +488,10 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
   const canStartMigration =
     selectedEnvId && selectedSiteRootPath && selectedTargetEnvId && sessionId && targetSessionId && selectedPaths.length > 0 && !isMigrating;
 
-  const canSavePreset = selectedPaths.length > 0;
+  const sourceEnv = environments.find((e) => e.id === selectedEnvId);
+  const targetEnv = environments.find((e) => e.id === selectedTargetEnvId);
+  const envsHaveCredentials = (!selectedEnvId || !!sourceEnv?.hasStoredCredentials) && (!selectedTargetEnvId || !!targetEnv?.hasStoredCredentials);
+  const canSavePreset = selectedPaths.length > 0 && envsHaveCredentials;
 
   if (isWorkspaceLoading) {
     return (
@@ -613,6 +616,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           size="sm"
           disabled={!canSavePreset}
           onClick={handleSavePreset}
+          title={!envsHaveCredentials ? 'Save credentials with "Remember Credentials" to enable presets' : undefined}
         >
           {'\u2605'} Save Preset
         </Button>
