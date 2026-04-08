@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import type { RiftEnvironment } from '@/lib/rift/types';
 import { saveEnvironment } from '@/lib/rift/storage';
 import { authenticate } from '@/lib/rift/sitecore-auth';
-import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList } from '@/lib/rift/api-client';
+import { fetchProjects, fetchEnvironments, parseProjectList, parseEnvironmentList, storeCredentialsApi } from '@/lib/rift/api-client';
 import type { ProjectOption, EnvironmentOption } from '@/lib/rift/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,9 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   const [savedClientSecret, setSavedClientSecret] = useState('');
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
 
+  const [rememberCredentials, setRememberCredentials] = useState(false);
+  const [showRememberModal, setShowRememberModal] = useState(false);
+
   // --- Step 1 handlers ---
 
   async function handleStep1Connect() {
@@ -130,25 +133,26 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   }
 
   async function handleStep1Next() {
-    const env: RiftEnvironment = {
-      id: crypto.randomUUID(),
-      name: step1EnvName,
-      cmUrl: step1CmUrl,
-      clientId,
-      clientSecret,
-      allowWrite: step1AllowWrite,
-    };
-    await saveEnvironment(env);
+    if (rememberCredentials) {
+      const env: RiftEnvironment = {
+        id: crypto.randomUUID(),
+        name: step1EnvName,
+        cmUrl: step1CmUrl,
+        allowWrite: step1AllowWrite,
+        hasStoredCredentials: true,
+      };
+      await storeCredentialsApi(env.id, clientId, clientSecret);
+      saveEnvironment(env);
+    }
 
-    // Save credentials for step 2 pre-fill
     setSavedClientId(clientId);
     setSavedClientSecret(clientSecret);
     setSavedProjectId(step1SelectedProjectId);
 
-    // Pre-fill step 2 credentials with same values (user can uncheck to change)
     setStep2Phase('credentials');
     setClientId(clientId);
     setClientSecret(clientSecret);
+    setRememberCredentials(false); // Reset for step 2
 
     setWizardStep(2);
   }
@@ -222,15 +226,17 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
   }
 
   async function handleStep2Finish() {
-    const env: RiftEnvironment = {
-      id: crypto.randomUUID(),
-      name: step2EnvName,
-      cmUrl: step2CmUrl,
-      clientId,
-      clientSecret,
-      allowWrite: step2AllowWrite,
-    };
-    await saveEnvironment(env);
+    if (rememberCredentials) {
+      const env: RiftEnvironment = {
+        id: crypto.randomUUID(),
+        name: step2EnvName,
+        cmUrl: step2CmUrl,
+        allowWrite: step2AllowWrite,
+        hasStoredCredentials: true,
+      };
+      await storeCredentialsApi(env.id, clientId, clientSecret);
+      saveEnvironment(env);
+    }
     onComplete();
   }
 
@@ -395,6 +401,23 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
               />
               <Label htmlFor={checkboxId} className="text-sm text-foreground">
                 Read Only
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={rememberCredentials}
+                onCheckedChange={(checked) => {
+                  if (checked === true) {
+                    setShowRememberModal(true);
+                  } else {
+                    setRememberCredentials(false);
+                  }
+                }}
+                id={`rememberCreds-step${wizardStep}`}
+              />
+              <Label htmlFor={`rememberCreds-step${wizardStep}`} className="text-sm text-foreground">
+                Remember Credentials
               </Label>
             </div>
           </>
@@ -591,6 +614,24 @@ export function RiftSetupWizard({ onComplete }: RiftSetupWizardProps) {
             <AlertDialogCancel>Go Back</AlertDialogCancel>
             <AlertDialogAction onClick={onComplete}>
               Skip
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remember Credentials info modal */}
+      <AlertDialog open={showRememberModal} onOpenChange={(open) => { if (!open) setShowRememberModal(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Credential Storage</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your credentials will be encrypted and stored securely on our servers. Only the application can access them — no person can view or retrieve your credentials. You can delete them at any time from the Environments page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowRememberModal(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setRememberCredentials(true); setShowRememberModal(false); }}>
+              Continue
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
