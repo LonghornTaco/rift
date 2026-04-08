@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { MigrationHistoryEntry } from '@/lib/rift/types';
-import { getHistory, clearHistory } from '@/lib/rift/storage';
+import { getHistory, clearHistory } from '@/lib/rift/local-storage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 

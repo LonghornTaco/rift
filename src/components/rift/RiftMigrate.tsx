@@ -14,6 +14,7 @@ import {
   TransferProgress,
   TransferPhase,
 } from '@/lib/rift/types';
+import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
@@ -49,50 +50,6 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-
-// --- Inline localStorage helpers (will be extracted to local-storage.ts in Task 10) ---
-
-function getPresets(): RiftPreset[] {
-  try {
-    return JSON.parse(localStorage.getItem('rift:presets') ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
-function savePreset(preset: RiftPreset): void {
-  const presets = getPresets();
-  const idx = presets.findIndex((p) => p.id === preset.id);
-  if (idx >= 0) {
-    presets[idx] = preset;
-  } else {
-    presets.push(preset);
-  }
-  localStorage.setItem('rift:presets', JSON.stringify(presets));
-}
-
-function getSettings(): RiftSettings {
-  try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('rift:settings') ?? '{}') };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-function saveSettings(settings: RiftSettings): void {
-  localStorage.setItem('rift:settings', JSON.stringify(settings));
-}
-
-function addHistoryEntry(entry: MigrationHistoryEntry): void {
-  try {
-    const history: MigrationHistoryEntry[] = JSON.parse(localStorage.getItem('rift:history') ?? '[]');
-    history.unshift(entry);
-    if (history.length > 50) history.length = 50;
-    localStorage.setItem('rift:history', JSON.stringify(history));
-  } catch {
-    localStorage.setItem('rift:history', JSON.stringify([entry]));
-  }
-}
 
 // --- Component ---
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { RiftPreset, RiftEnvironment } from '@/lib/rift/types';
+import { getPresets } from '@/lib/rift/local-storage';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -9,10 +10,6 @@ interface RiftWelcomeProps {
   environments: RiftEnvironment[];
   onNewMigration: () => void;
   onLoadPreset: (preset: RiftPreset) => void;
-}
-
-function getPresets(): RiftPreset[] {
-  try { return JSON.parse(localStorage.getItem('rift:presets') ?? '[]'); } catch { return []; }
 }
 
 function formatDate(iso: string): string {

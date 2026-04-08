@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { RiftPreset, RiftEnvironment, MigrationPath } from '@/lib/rift/types';
+import { getPresets, savePreset, deletePreset } from '@/lib/rift/local-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -33,28 +34,11 @@ function truncatePath(path: string): string {
   return '.../' + segments.slice(-3).join('/');
 }
 
-function getPresets(): RiftPreset[] {
-  try { return JSON.parse(localStorage.getItem('rift:presets') ?? '[]'); } catch { return []; }
-}
-
-function savePreset(preset: RiftPreset): void {
-  const all = getPresets();
-  const idx = all.findIndex((p) => p.id === preset.id);
-  if (idx >= 0) { all[idx] = preset; } else { all.push(preset); }
-  localStorage.setItem('rift:presets', JSON.stringify(all));
-}
-
-function deletePreset(id: string): void {
-  const all = getPresets().filter((p) => p.id !== id);
-  localStorage.setItem('rift:presets', JSON.stringify(all));
-}
-
 function updatePresetLastUsed(id: string): void {
   const all = getPresets();
-  const idx = all.findIndex((p) => p.id === id);
-  if (idx >= 0) {
-    all[idx] = { ...all[idx], lastUsed: new Date().toISOString() };
-    localStorage.setItem('rift:presets', JSON.stringify(all));
+  const preset = all.find((p) => p.id === id);
+  if (preset) {
+    savePreset({ ...preset, lastUsed: new Date().toISOString() });
   }
 }
 
