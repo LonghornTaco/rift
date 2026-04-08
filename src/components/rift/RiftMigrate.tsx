@@ -424,10 +424,19 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
         setSessionId(result.sessionId);
         setSites(fetchedSites);
 
+        // Apply pending site selection from preset now that sites are loaded
+        if (loadedPreset?.siteRootPath) {
+          const match = fetchedSites.find((s: { rootPath: string }) => s.rootPath === loadedPreset.siteRootPath);
+          if (match) {
+            setSelectedSiteRootPath(match.rootPath);
+          }
+        }
+
         // After source is done, check if target also needs credentials
         if (loadedPreset?.targetEnvId) {
           const targetEnv = getEnvironments().find((e) => e.id === loadedPreset.targetEnvId);
           if (!targetEnv?.hasStoredCredentials) {
+            setSelectedTargetEnvId(loadedPreset.targetEnvId);
             setCredPromptEnvId(loadedPreset.targetEnvId);
             setCredPromptRole('target');
             setCredPromptClientId('');
@@ -440,6 +449,7 @@ export function RiftMigrate({ loadedPreset, onBack }: RiftMigrateProps) {
           }
         }
       } else {
+        setSelectedTargetEnvId(credPromptEnvId);
         setTargetSessionId(result.sessionId);
       }
 
