@@ -234,3 +234,44 @@ async function pollBlobState(
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+/**
+ * TEMPORARY: Test whether consumeFile and getBlobState endpoints are reachable
+ * through the Marketplace SDK proxy. Remove after testing.
+ */
+export async function testTransferEndpoints(
+  client: ClientSDK,
+  contextId: string
+): Promise<{ consumeFile: string; getBlobState: string }> {
+  const results = { consumeFile: '', getBlobState: '' };
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const consumeResult = await client.query('xmc.contentTransfer.consumeFile', {
+      params: {
+        query: { databaseName: 'master', fileName: 'test-nonexistent.raif', sitecoreContextId: contextId },
+      },
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = consumeResult.data as any;
+    results.consumeFile = `OK — response: ${JSON.stringify(data?.data ?? data?.error ?? data).substring(0, 200)}`;
+  } catch (err) {
+    results.consumeFile = `ERROR — ${err instanceof Error ? err.message : String(err)}`;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const blobResult = await client.query('xmc.contentTransfer.getBlobState', {
+      params: {
+        query: { fileName: 'test-nonexistent.raif', sitecoreContextId: contextId },
+      },
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = blobResult.data as any;
+    results.getBlobState = `OK — response: ${JSON.stringify(data?.data ?? data?.error ?? data).substring(0, 200)}`;
+  } catch (err) {
+    results.getBlobState = `ERROR — ${err instanceof Error ? err.message : String(err)}`;
+  }
+
+  return results;
+}
