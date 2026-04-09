@@ -16,7 +16,7 @@ import {
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
-import { transferPath, testTransferEndpoints } from '@/lib/rift/content-transfer';
+import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
@@ -446,24 +446,6 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
             <path d="M16 21h5v-5" />
           </svg>
           Refresh
-        </Button>
-
-        {/* TEMP: Test Content Transfer endpoints */}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!selectedSourceEnvId}
-          onClick={async () => {
-            const env = environments.find((e) => e.tenantId === selectedSourceEnvId);
-            if (!env) return;
-            console.log('[Rift] Testing Content Transfer endpoints...');
-            const results = await testTransferEndpoints(client, env.contextId);
-            console.log('[Rift] consumeFile:', results.consumeFile);
-            console.log('[Rift] getBlobState:', results.getBlobState);
-            alert(`consumeFile: ${results.consumeFile}\n\ngetBlobState: ${results.getBlobState}`);
-          }}
-        >
-          Test Endpoints
         </Button>
 
         {/* Save Preset */}
