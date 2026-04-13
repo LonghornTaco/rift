@@ -38,6 +38,8 @@ export function useMarketplaceClient(): MarketplaceState {
         const contextResult = await client.query('application.context');
         const appContext = contextResult.data ?? null;
 
+        console.log('[Rift] application.context full response:', JSON.stringify(appContext, null, 2));
+
         const resources = appContext?.resourceAccess ?? appContext?.resources ?? [];
         const environments: RiftEnvironment[] = resources
           .filter((r: any) => r.resourceId === 'xmcloud' && r.tenantId)
