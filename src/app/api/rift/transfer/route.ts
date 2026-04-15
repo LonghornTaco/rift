@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { experimental_createXMCClient } from '@sitecore-marketplace-sdk/xmc';
-import { auth0 } from '@/lib/auth0';
 import { transferPath } from '@/lib/rift/content-transfer';
 import type { TransferPhase } from '@/lib/rift/types';
 
@@ -45,18 +44,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  let tokenResult: { token: string };
-  try {
-    tokenResult = await auth0.getAccessToken();
-  } catch (err) {
-    return Response.json(
-      { error: `Failed to get access token: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 401 }
-    );
+  // Token is forwarded from the browser, which obtained it via the popup
+  // login flow (src/app/auth/popup-complete/page.tsx). The browser stores it
+  // in React state and sends it here as a Bearer header on each transfer.
+  const authHeader = req.headers.get('authorization') ?? '';
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return Response.json({ error: 'Missing or malformed Authorization header' }, { status: 401 });
   }
+  const accessToken = match[1];
 
   const xmc = await experimental_createXMCClient({
-    getAccessToken: async () => tokenResult.token,
+    getAccessToken: async () => accessToken,
   });
 
   const encoder = new TextEncoder();

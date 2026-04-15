@@ -6,6 +6,7 @@ interface TransferRequest {
   itemPath: string;
   scope: string;
   mergeStrategy?: string;
+  accessToken: string;
   onProgress?: (phase: TransferPhase, detail?: string) => void;
   signal?: AbortSignal;
 }
@@ -20,10 +21,13 @@ type StreamEvent =
  * and streams NDJSON progress events back to the caller's onProgress callback.
  */
 export async function transferPathViaApi(request: TransferRequest): Promise<void> {
-  const { onProgress, signal, ...body } = request;
+  const { onProgress, signal, accessToken, ...body } = request;
   const res = await fetch('/api/rift/transfer', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify(body),
     signal,
   });
