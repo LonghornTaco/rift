@@ -16,7 +16,7 @@ import {
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
-import { transferPath } from '@/lib/rift/content-transfer';
+import { transferPathViaApi } from '@/lib/rift/transfer-client';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
@@ -301,7 +301,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
     const settings = getSettings();
     const transfers = paths.map((path, index) => {
-      return transferPath(client, {
+      return transferPathViaApi({
         sourceContextId: sourceEnv.contextId,
         targetContextId: targetEnv.contextId,
         itemPath: path.itemPath,
