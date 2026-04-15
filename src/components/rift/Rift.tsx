@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import { RiftAuthProvider } from '@/lib/rift/auth-provider';
+import { APP_VERSION } from '@/lib/version';
 import { useMarketplaceClient } from '@/lib/rift/marketplace-client';
 import { RiftView, RiftPreset } from '@/lib/rift/types';
 import { RiftWelcome } from './RiftWelcome';
@@ -260,7 +261,7 @@ function RiftApp() {
             <div className="text-lg font-bold text-foreground">Rift</div>
             <div className="text-sm text-muted-foreground mb-4">Content Migration for SitecoreAI</div>
             <div className="text-xs text-muted-foreground space-y-1">
-              <div><span className="font-medium text-foreground">Version:</span> 1.0.0</div>
+              <div><span className="font-medium text-foreground">Version:</span> {APP_VERSION}</div>
               <div><span className="font-medium text-foreground">Author:</span> Wilkerson Consulting</div>
               <div><span className="font-medium text-foreground">Website:</span> <a href="https://riftapp.dev" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">riftapp.dev</a></div>
             </div>
