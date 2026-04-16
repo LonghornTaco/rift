@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next';
 
-const isDev = process.env.NODE_ENV === 'development';
+const allowedParentDomains = [
+  'https://marketplace-app.sitecorecloud.io',
+  'https://pages.sitecorecloud.io',
+  'https://xmapps.sitecorecloud.io',
+];
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -12,32 +16,7 @@ const nextConfig: NextConfig = {
       headers: [
         {
           key: 'Content-Security-Policy',
-          value: [
-            "default-src 'self' blob:",
-            "frame-src https://auth.sitecorecloud.io",
-            `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
-            "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data:",
-            "connect-src 'self' https://*.sitecorecloud.io https://*.auth0.com https://*.sitecore.cloud",
-            "frame-ancestors https://*.sitecorecloud.io",
-            "font-src 'self'",
-          ].join('; '),
-        },
-        {
-          key: 'Strict-Transport-Security',
-          value: 'max-age=63072000; includeSubDomains; preload',
-        },
-        {
-          key: 'X-Content-Type-Options',
-          value: 'nosniff',
-        },
-        {
-          key: 'Referrer-Policy',
-          value: 'strict-origin-when-cross-origin',
-        },
-        {
-          key: 'Permissions-Policy',
-          value: 'camera=(), microphone=(), geolocation=()',
+          value: `frame-ancestors 'self' ${allowedParentDomains.join(' ')}`,
         },
       ],
     },
