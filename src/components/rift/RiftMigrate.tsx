@@ -283,6 +283,34 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
   const canSavePreset = selectedPaths.length > 0;
 
+  // --- Auth helper: open login in a new tab, relay token through server ---
+
+  async function loginViaNewTab(sdk: ClientSDK): Promise<string> {
+    const nonce = crypto.randomUUID();
+    const baseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL ?? '';
+    sdk.navigateToExternalUrl(
+      `${baseUrl}/auth/login-redirect?nonce=${encodeURIComponent(nonce)}`,
+      true
+    );
+
+    // Poll the server-side relay until the login tab posts the token
+    const POLL_INTERVAL = 2000;
+    const MAX_ATTEMPTS = 60; // 2 minutes
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+      try {
+        const res = await fetch(`/api/auth/token-relay?nonce=${encodeURIComponent(nonce)}`);
+        if (res.ok) {
+          const data = (await res.json()) as { token: string };
+          if (data.token) return data.token;
+        }
+      } catch {
+        // Network error — keep polling
+      }
+    }
+    throw new Error('Sign-in timed out — please try again');
+  }
+
   // --- Migration execution ---
 
   async function executeMigration(paths: MigrationPath[]) {
@@ -295,17 +323,13 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         await loginWithPopup();
         token = await getAccessTokenSilently();
       } catch (popupErr) {
-        console.error('[Rift] Popup login failed:', popupErr);
-        // Last resort: ask the marketplace host to open a new tab for login
+        console.warn('[Rift] Popup login failed, opening login tab:', popupErr);
         try {
-          client.navigateToExternalUrl(
-            `${process.env.NEXT_PUBLIC_APP_BASE_URL ?? ''}/auth/login-redirect`,
-            true
-          );
-        } catch {
-          // navigateToExternalUrl may not exist on all SDK versions
+          token = await loginViaNewTab(client);
+        } catch (tabErr) {
+          console.error('[Rift] All auth methods failed:', tabErr);
+          return;
         }
-        return;
       }
     }
 

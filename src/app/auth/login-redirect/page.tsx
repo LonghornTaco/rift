@@ -1,18 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 
-// Last-resort login page opened in a new tab by the marketplace host.
-// Runs as a top-level page (not in iframe), so Auth0 redirect works.
-// After login, the refresh token is stored in localStorage. User closes
-// this tab and retries migration in the marketplace iframe — the iframe
-// picks up the refresh token from localStorage (same partition for
-// the same top-level origin in subsequent visits, or unpartitioned if
-// visited top-level first).
-
 function LoginFlow() {
-  const { isAuthenticated, isLoading, loginWithRedirect, handleRedirectCallback } = useAuth0();
+  const { isAuthenticated, isLoading, loginWithRedirect, handleRedirectCallback, getAccessTokenSilently } = useAuth0();
+  const relayedRef = useRef(false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -25,10 +18,27 @@ function LoginFlow() {
 
     if (!isAuthenticated) {
       loginWithRedirect({
-        appState: { returnTo: '/auth/login-redirect' },
+        appState: { returnTo: window.location.pathname + window.location.search },
       });
     }
   }, [isLoading, isAuthenticated, loginWithRedirect, handleRedirectCallback]);
+
+  useEffect(() => {
+    if (!isAuthenticated || relayedRef.current) return;
+    relayedRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const nonce = params.get('nonce');
+    if (!nonce) return;
+
+    getAccessTokenSilently().then((token) => {
+      fetch('/api/auth/token-relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nonce, token }),
+      }).catch(console.error);
+    }).catch(console.error);
+  }, [isAuthenticated, getAccessTokenSilently]);
 
   if (isLoading) {
     return <p style={{ padding: '2rem', fontFamily: 'system-ui' }}>Signing you in…</p>;
@@ -39,9 +49,9 @@ function LoginFlow() {
       <div style={{ padding: '2rem', fontFamily: 'system-ui', textAlign: 'center' }}>
         <h1 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Signed in successfully</h1>
         <p style={{ color: '#666' }}>
-          You can close this tab and return to Rift in the Sitecore marketplace.
+          Return to Rift in the Sitecore marketplace and click <strong>Start Migration</strong> again.
           <br />
-          Click <strong>Start Migration</strong> again — it will work now.
+          You can close this tab.
         </p>
       </div>
     );
