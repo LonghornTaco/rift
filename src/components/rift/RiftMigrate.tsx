@@ -63,7 +63,7 @@ interface RiftMigrateProps {
 
 export function RiftMigrate({ client, environments, loadedPreset, onBack }: RiftMigrateProps) {
   const [parallelPaths, setParallelPaths] = useState(DEFAULT_SETTINGS.parallelPaths);
-  const { getAccessTokenSilently } = useAuth();
+  const { getAccessTokenSilently, loginWithPopup } = useAuth();
 
   // Load persisted settings
   useEffect(() => {
@@ -289,9 +289,24 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     let token: string;
     try {
       token = await getAccessTokenSilently();
-    } catch (err) {
-      console.error('[Rift] Failed to get access token:', err);
-      return;
+    } catch (silentErr) {
+      console.warn('[Rift] Silent token failed, trying popup login:', silentErr);
+      try {
+        await loginWithPopup();
+        token = await getAccessTokenSilently();
+      } catch (popupErr) {
+        console.error('[Rift] Popup login failed:', popupErr);
+        // Last resort: ask the marketplace host to open a new tab for login
+        try {
+          client.navigateToExternalUrl(
+            `${process.env.NEXT_PUBLIC_APP_BASE_URL ?? ''}/auth/login-redirect`,
+            true
+          );
+        } catch {
+          // navigateToExternalUrl may not exist on all SDK versions
+        }
+        return;
+      }
     }
 
     setIsMigrating(true);

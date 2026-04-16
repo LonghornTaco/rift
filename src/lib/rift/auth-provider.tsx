@@ -24,6 +24,9 @@ export function RiftAuthProvider({ children }: { children: ReactNode }) {
     <Auth0Provider
       domain={domain}
       clientId={clientId}
+      useRefreshTokens={true}
+      cacheLocation="localstorage"
+      useRefreshTokensFallback={false}
       authorizationParams={{
         organization_id: process.env.NEXT_PUBLIC_SITECORE_ORGANIZATION_ID,
         tenant_id: process.env.NEXT_PUBLIC_SITECORE_TENANT_ID,
@@ -40,8 +43,6 @@ export function RiftAuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Re-export a useAuth hook matching the quickstart pattern.
-// Injects organization_id and tenant_id into every silent token request.
 export function useAuth(): Auth0ContextInterface {
   const { getAccessTokenSilently, ...rest } = useAuth0();
 
