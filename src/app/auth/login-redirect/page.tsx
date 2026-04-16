@@ -62,11 +62,39 @@ function LoginFlow() {
     }
   }, [isLoading, isAuthenticated, loginWithRedirect, handleRedirectCallback, getAccessTokenSilently]);
 
-  // Edge case: already authenticated (e.g. page refreshed after login)
+  // Already authenticated (e.g. second visit, or page refreshed after login).
+  // Still need to relay the token if a nonce is present.
   useEffect(() => {
-    if (!isAuthenticated || status !== 'loading') return;
-    setStatus('done');
-  }, [isAuthenticated, status]);
+    if (!isAuthenticated || status !== 'loading' || handledRef.current) return;
+    handledRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const nonce = params.get('nonce');
+    if (!nonce) {
+      setStatus('done');
+      return;
+    }
+
+    setStatus('processing');
+    console.log('[Rift login-redirect] Already authenticated, relaying token for nonce:', nonce);
+    getAccessTokenSilently()
+      .then((token) => {
+        return fetch('/api/auth/token-relay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nonce, token }),
+        });
+      })
+      .then((res) => {
+        console.log('[Rift login-redirect] Relay response:', res.status);
+        setStatus('done');
+      })
+      .catch((err) => {
+        console.error('[Rift login-redirect] Relay failed:', err);
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      });
+  }, [isAuthenticated, status, getAccessTokenSilently]);
 
   if (status === 'loading' || status === 'redirecting') {
     return <p style={{ padding: '2rem', fontFamily: 'system-ui' }}>Redirecting to sign-in…</p>;
