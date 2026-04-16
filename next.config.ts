@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
           key: 'Content-Security-Policy',
           value: [
             "default-src 'self' blob:",
+            "frame-src https://auth.sitecorecloud.io",
             `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data:",
