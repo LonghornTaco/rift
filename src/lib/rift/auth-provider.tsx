@@ -5,17 +5,8 @@ import {
   type Auth0ContextInterface,
   type GetTokenSilentlyOptions,
   useAuth0,
-  withAuthenticationRequired,
 } from '@auth0/auth0-react';
 import type { ReactNode } from 'react';
-
-// Wraps children with withAuthenticationRequired so Auth0 triggers login
-// automatically if no SSO session exists. Inside the Sitecore marketplace
-// iframe, the user already authenticated to auth.sitecorecloud.io via the
-// marketplace shell — so getAccessTokenSilently resolves instantly via SSO.
-const WithAuth = withAuthenticationRequired(
-  ({ children }: { children: ReactNode }) => children,
-);
 
 export function RiftAuthProvider({ children }: { children: ReactNode }) {
   const domain = process.env.NEXT_PUBLIC_AUTH0_DOMAIN;
@@ -44,7 +35,7 @@ export function RiftAuthProvider({ children }: { children: ReactNode }) {
         scope: process.env.NEXT_PUBLIC_AUTH0_SCOPE ?? 'openid profile email offline_access',
       }}
     >
-      <WithAuth>{children}</WithAuth>
+      {children}
     </Auth0Provider>
   );
 }
