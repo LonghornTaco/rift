@@ -17,7 +17,7 @@ import {
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
 import { transferPathViaApi } from '@/lib/rift/transfer-client';
-import { useAuth0Token } from '@/lib/rift/use-auth0-token';
+import { useAuth } from '@/lib/rift/auth-provider';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
@@ -63,7 +63,7 @@ interface RiftMigrateProps {
 
 export function RiftMigrate({ client, environments, loadedPreset, onBack }: RiftMigrateProps) {
   const [parallelPaths, setParallelPaths] = useState(DEFAULT_SETTINGS.parallelPaths);
-  const { token: accessToken, signIn } = useAuth0Token();
+  const { getAccessTokenSilently } = useAuth();
 
   // Load persisted settings
   useEffect(() => {
@@ -286,16 +286,12 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   // --- Migration execution ---
 
   async function executeMigration(paths: MigrationPath[]) {
-    // Ensure we have a Sitecore access token before starting. If not, pop the
-    // Auth0 login flow in a top-level window and wait for the token.
-    let token = accessToken;
-    if (!token) {
-      try {
-        token = await signIn();
-      } catch (err) {
-        console.error('[Rift] Sign-in failed:', err);
-        return;
-      }
+    let token: string;
+    try {
+      token = await getAccessTokenSilently();
+    } catch (err) {
+      console.error('[Rift] Failed to get access token:', err);
+      return;
     }
 
     setIsMigrating(true);

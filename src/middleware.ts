@@ -1,15 +1,9 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-import { auth0 } from '@/lib/auth0';
-
-/**
- * Middleware: Auth0 session handling + CSRF protection for API routes.
- *
- * - /auth/* routes are handled by the Auth0 SDK (login, callback, logout)
- * - /api/rift/* routes get CSRF origin validation
- * - All other matched routes pass through Auth0 middleware for session refresh
- */
+// CSRF protection for Rift API routes.
+// Auth is now handled client-side by @auth0/auth0-react (SPA SDK),
+// so we no longer need @auth0/nextjs-auth0 middleware.
 
 function logDeny(route: string, clientIp: string, reason: string) {
   console.warn(JSON.stringify({
@@ -31,17 +25,7 @@ function getClientIp(request: NextRequest): string {
   );
 }
 
-export async function middleware(request: NextRequest) {
-  // Auth0 SDK handles /auth/* routes (login, callback, logout, etc.)
-  // and refreshes session cookies on all matched routes
-  const authResponse = await auth0.middleware(request);
-
-  // For /auth/* routes, return the Auth0 response directly
-  if (request.nextUrl.pathname.startsWith('/auth/')) {
-    return authResponse;
-  }
-
-  // CSRF protection for /api/rift/* routes
+export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith('/api/rift/')) {
     const origin = request.headers.get('origin');
     const referer = request.headers.get('referer');
@@ -76,11 +60,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return authResponse;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|rift-logo.svg).*)',
-  ],
+  matcher: ['/api/rift/:path*'],
 };
