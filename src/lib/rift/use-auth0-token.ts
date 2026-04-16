@@ -1,69 +1,118 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+const POPUP_RETURN_TO = '/auth/popup-complete';
+const POPUP_TIMEOUT_MS = 120_000;
 
 interface AuthState {
   token: string | null;
-  isLoading: boolean;
+  isSigningIn: boolean;
   error: string | null;
 }
 
+interface SignInMessage {
+  type: 'rift-auth-token' | 'rift-auth-error';
+  token?: string;
+  error?: string;
+}
+
 /**
- * Manages the Sitecore access token used for Content Transfer API calls.
- *
- * Strategy: full-page navigation inside the Sitecore marketplace iframe.
- * window.open is blocked (iframe sandbox has no allow-popups), so we can't
- * use a popup flow. Instead:
- *
- *   1. On mount, GET /api/auth/me — if an Auth0 session cookie exists, this
- *      returns the XMC access token and we cache it in state.
- *   2. signIn() navigates window.location to /auth/login?returnTo=/rift,
- *      which reloads the iframe through Auth0 and back to /rift. The next
- *      page load picks up the new session via step 1.
- *
- * The token is held in memory only; a full refresh rehydrates via /api/auth/me.
+ * Popup-based Auth0 login. Earlier attempts used a features string on
+ * window.open which may have tripped Firefox's parameter validation inside
+ * the Sitecore marketplace iframe sandbox. This version calls window.open
+ * with only a URL + target — the minimal signature — and lets the browser
+ * pick default sizing. If the iframe sandbox allows popups at all, this
+ * should open.
  */
 export function useAuth0Token() {
-  const [state, setState] = useState<AuthState>({ token: null, isLoading: true, error: null });
+  const [state, setState] = useState<AuthState>({ token: null, isSigningIn: false, error: null });
+  const pendingRef = useRef<{ resolve: (t: string) => void; reject: (e: Error) => void } | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/auth/me', { credentials: 'same-origin' })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (res.ok) {
-          const data = (await res.json()) as { token: string | null };
-          setState({ token: data.token, isLoading: false, error: null });
-        } else {
-          setState({ token: null, isLoading: false, error: null });
-        }
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setState({
-          token: null,
-          isLoading: false,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    return () => {
-      cancelled = true;
+    const onMessage = (event: MessageEvent<SignInMessage>) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || (data.type !== 'rift-auth-token' && data.type !== 'rift-auth-error')) return;
+
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+
+      if (data.type === 'rift-auth-token' && data.token) {
+        setState({ token: data.token, isSigningIn: false, error: null });
+        pending?.resolve(data.token);
+      } else {
+        const message = data.error ?? 'Login failed';
+        setState((prev) => ({ ...prev, isSigningIn: false, error: message }));
+        pending?.reject(new Error(message));
+      }
     };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, []);
 
   const signIn = useCallback((): Promise<string> => {
-    // Full-page navigation inside the iframe. This resolves never (we're
-    // redirecting away), but returning a pending promise keeps the caller's
-    // UI in its "signing in" state until the browser actually navigates.
-    const returnTo = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/rift';
-    window.location.href = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
-    return new Promise<string>(() => {
-      /* never resolves — the tab is navigating away */
+    return new Promise<string>((resolve, reject) => {
+      if (pendingRef.current) {
+        reject(new Error('Sign-in already in progress'));
+        return;
+      }
+
+      const url = `/auth/login?returnTo=${encodeURIComponent(POPUP_RETURN_TO)}`;
+
+      let popup: Window | null;
+      try {
+        // Minimal args — URL + target only. No features string.
+        popup = window.open(url, 'rift-auth-popup');
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+      if (!popup) {
+        reject(new Error('Popup blocked — please allow popups for this site and try again'));
+        return;
+      }
+
+      pendingRef.current = { resolve, reject };
+      setState((prev) => ({ ...prev, isSigningIn: true, error: null }));
+
+      const cleanup = () => {
+        window.clearTimeout(timeout);
+        window.clearInterval(checkClosed);
+      };
+
+      const timeout = window.setTimeout(() => {
+        if (pendingRef.current) {
+          pendingRef.current.reject(new Error('Sign-in timed out'));
+          pendingRef.current = null;
+          setState((prev) => ({ ...prev, isSigningIn: false, error: 'Sign-in timed out' }));
+        }
+        cleanup();
+      }, POPUP_TIMEOUT_MS);
+
+      const checkClosed = window.setInterval(() => {
+        let closed = false;
+        try {
+          closed = popup!.closed;
+        } catch {
+          // Accessing .closed on a cross-origin window can throw in some
+          // sandbox configurations — treat as still open until timeout.
+          return;
+        }
+        if (closed) {
+          if (pendingRef.current) {
+            pendingRef.current.reject(new Error('Sign-in cancelled'));
+            pendingRef.current = null;
+            setState((prev) => ({ ...prev, isSigningIn: false, error: 'Sign-in cancelled' }));
+          }
+          cleanup();
+        }
+      }, 500);
     });
   }, []);
 
   const clearToken = useCallback(() => {
-    setState({ token: null, isLoading: false, error: null });
+    setState({ token: null, isSigningIn: false, error: null });
   }, []);
 
   return { ...state, signIn, clearToken };
