@@ -109,11 +109,9 @@ export default function LoginRedirectPage() {
     <Auth0Provider
       domain={domain}
       clientId={clientId}
-      useRefreshTokens={true}
-      cacheLocation="localstorage"
       authorizationParams={{
         audience: process.env.NEXT_PUBLIC_AUTH0_AUDIENCE,
-        scope: process.env.NEXT_PUBLIC_AUTH0_SCOPE ?? 'openid profile email offline_access',
+        scope: 'openid profile email',
         redirect_uri: `${process.env.NEXT_PUBLIC_APP_BASE_URL}/auth/login-redirect`,
       }}
     >

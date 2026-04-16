@@ -24,9 +24,6 @@ export function RiftAuthProvider({ children }: { children: ReactNode }) {
     <Auth0Provider
       domain={domain}
       clientId={clientId}
-      useRefreshTokens={true}
-      cacheLocation="localstorage"
-      useRefreshTokensFallback={false}
       authorizationParams={{
         organization_id: process.env.NEXT_PUBLIC_SITECORE_ORGANIZATION_ID,
         tenant_id: process.env.NEXT_PUBLIC_SITECORE_TENANT_ID,
@@ -35,7 +32,7 @@ export function RiftAuthProvider({ children }: { children: ReactNode }) {
           : undefined,
         audience: process.env.NEXT_PUBLIC_AUTH0_AUDIENCE,
         redirect_uri: process.env.NEXT_PUBLIC_APP_BASE_URL,
-        scope: process.env.NEXT_PUBLIC_AUTH0_SCOPE ?? 'openid profile email offline_access',
+        scope: 'openid profile email',
       }}
     >
       {children}
