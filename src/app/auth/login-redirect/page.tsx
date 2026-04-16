@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 
+const NONCE_KEY = 'rift_auth_nonce';
+
 function LoginFlow() {
   const { isAuthenticated, isLoading, loginWithRedirect, handleRedirectCallback, getAccessTokenSilently } = useAuth0();
   const relayedRef = useRef(false);
@@ -11,15 +13,20 @@ function LoginFlow() {
     if (isLoading) return;
 
     const params = new URLSearchParams(window.location.search);
+
+    // Stash the nonce in sessionStorage before redirecting to Auth0
+    const nonce = params.get('nonce');
+    if (nonce) {
+      sessionStorage.setItem(NONCE_KEY, nonce);
+    }
+
     if (params.has('code') && params.has('state')) {
       handleRedirectCallback().catch(console.error);
       return;
     }
 
     if (!isAuthenticated) {
-      loginWithRedirect({
-        appState: { returnTo: window.location.pathname + window.location.search },
-      });
+      loginWithRedirect();
     }
   }, [isLoading, isAuthenticated, loginWithRedirect, handleRedirectCallback]);
 
@@ -27,17 +34,23 @@ function LoginFlow() {
     if (!isAuthenticated || relayedRef.current) return;
     relayedRef.current = true;
 
-    const params = new URLSearchParams(window.location.search);
-    const nonce = params.get('nonce');
-    if (!nonce) return;
+    const nonce = sessionStorage.getItem(NONCE_KEY);
+    if (!nonce) {
+      console.warn('[Rift login-redirect] No nonce found in sessionStorage');
+      return;
+    }
+    sessionStorage.removeItem(NONCE_KEY);
 
     getAccessTokenSilently().then((token) => {
+      console.log('[Rift login-redirect] Relaying token for nonce:', nonce);
       fetch('/api/auth/token-relay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nonce, token }),
       }).catch(console.error);
-    }).catch(console.error);
+    }).catch((err) => {
+      console.error('[Rift login-redirect] Failed to get token after login:', err);
+    });
   }, [isAuthenticated, getAccessTokenSilently]);
 
   if (isLoading) {
@@ -49,7 +62,7 @@ function LoginFlow() {
       <div style={{ padding: '2rem', fontFamily: 'system-ui', textAlign: 'center' }}>
         <h1 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Signed in successfully</h1>
         <p style={{ color: '#666' }}>
-          Return to Rift in the Sitecore marketplace and click <strong>Start Migration</strong> again.
+          Return to Rift in the Sitecore marketplace — the migration will start automatically.
           <br />
           You can close this tab.
         </p>

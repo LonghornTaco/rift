@@ -239,6 +239,7 @@ function RiftApp() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
+            <div className="px-3 py-1 text-[10px] text-muted-foreground/50">v{APP_VERSION}</div>
           </SidebarFooter>
         </Sidebar>
 
