@@ -140,13 +140,20 @@ export async function transferPath(
     if (fileIds.length === 0) throw new Error('completeChunkSetTransfer returned no file names');
 
     // 5. Consume each .raif file on target and poll state until OK.
+    //    ConsumeFile requires a schema prefix on the filename — blob://
+    //    for the Cloud blob-storage location produced by completeChunkSetTransfer.
+    //    GetBlobState uses the bare filename.
     report('consuming');
     for (const fileName of fileIds) {
       assertOk(
         'consumeFile',
         await client.query('xmc.contentTransfer.consumeFile', {
           params: {
-            query: { databaseName: 'master', fileName, sitecoreContextId: targetContextId },
+            query: {
+              databaseName: 'master',
+              fileName: `blob://${fileName}`,
+              sitecoreContextId: targetContextId,
+            },
           },
         })
       );
@@ -204,6 +211,7 @@ async function pollBlobState(
   fileName: string,
   signal?: AbortSignal
 ): Promise<void> {
+  let lastState = '';
   for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
     signal?.throwIfAborted();
     const result = await client.query('xmc.contentTransfer.getBlobState', {
@@ -211,16 +219,26 @@ async function pollBlobState(
     });
     assertOk('getBlobState', result);
     const body = unwrapData(result.data) as
-      | { status?: string; BlobState?: string; details?: unknown; Error?: string }
+      | { status?: string; BlobState?: string; details?: unknown; Error?: string | null }
       | undefined;
     const state = body?.status ?? body?.BlobState ?? '';
-    if (state === 'OK' || state === 'Complete' || state === 'Completed') return;
+    lastState = state;
+    if (
+      state === 'OK' ||
+      state === 'Complete' ||
+      state === 'Completed' ||
+      state === 'Consumed' ||
+      state === 'Success'
+    ) {
+      return;
+    }
     if (state === 'Error' || state === 'Failed') {
       throw new Error(`Consume failed: ${JSON.stringify(body?.details ?? body?.Error ?? body)}`);
     }
+    // "Uploaded" / "Consuming" / etc. → keep polling
     await delay(POLL_INTERVAL_MS);
   }
-  throw new Error('Content consume timed out');
+  throw new Error(`Content consume timed out — last state=${lastState}`);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
