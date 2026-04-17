@@ -296,6 +296,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     const progress: TransferProgress[] = paths.map((p) => ({
       itemPath: p.itemPath,
       phase: 'creating' as TransferPhase,
+      events: [{ timestamp: Date.now(), phase: 'creating' as TransferPhase }],
     }));
     setTransferProgress([...progress]);
 
@@ -309,11 +310,24 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         signal: controller.signal,
         onProgress: (phase, detail) => {
           const chunksComplete = detail ? parseInt(detail.split('/')[0]) : undefined;
-          progress[index] = { ...progress[index], phase, chunksComplete };
+          const prev = progress[index];
+          const events = [...(prev.events ?? [])];
+          const last = events[events.length - 1];
+          // Collapse consecutive events with identical phase+detail (uploading 1/10 → 10/10 shouldn't spam)
+          if (!last || last.phase !== phase || last.detail !== detail) {
+            events.push({ timestamp: Date.now(), phase, detail });
+          }
+          progress[index] = { ...prev, phase, chunksComplete, events };
           setTransferProgress([...progress]);
         },
       }).catch((err) => {
-        progress[index] = { ...progress[index], phase: 'error', error: err.message };
+        const prev = progress[index];
+        const events = [...(prev.events ?? []), {
+          timestamp: Date.now(),
+          phase: 'error' as TransferPhase,
+          detail: err.message,
+        }];
+        progress[index] = { ...prev, phase: 'error', error: err.message, events };
         setTransferProgress([...progress]);
       });
     });

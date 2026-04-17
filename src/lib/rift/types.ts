@@ -74,10 +74,17 @@ export type TransferPhase =
   | 'complete'
   | 'error';
 
+export interface TransferProgressEvent {
+  timestamp: number;
+  phase: TransferPhase;
+  detail?: string;
+}
+
 export interface TransferProgress {
   itemPath: string;
   phase: TransferPhase;
   chunksTotal?: number;
   chunksComplete?: number;
   error?: string;
+  events?: TransferProgressEvent[];
 }

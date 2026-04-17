@@ -122,16 +122,50 @@ export function RiftProgressOverlay({ isActive, transferProgress, onClose, onCan
       {/* Transfer progress rows */}
       <div
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto px-4 py-2"
+        className="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-3"
       >
-        {transferProgress.map((tp) => (
-          <div key={tp.itemPath} className="flex items-center gap-2 py-1">
-            <span className="truncate flex-1">{tp.itemPath.split('/').pop()}</span>
-            <span className={`text-xs ${tp.phase === 'error' ? 'text-destructive' : tp.phase === 'complete' ? 'text-green-500' : 'text-muted-foreground'}`}>
-              {tp.phase}{tp.chunksComplete ? ` (${tp.chunksComplete})` : ''}
-            </span>
-          </div>
-        ))}
+        {transferProgress.map((tp) => {
+          const start = tp.events?.[0]?.timestamp;
+          const relTime = (ts: number) =>
+            start ? `+${((ts - start) / 1000).toFixed(1)}s` : '';
+          return (
+            <div key={tp.itemPath} className="border border-border rounded p-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="truncate flex-1 font-medium text-sm">
+                  {tp.itemPath}
+                </span>
+                <span
+                  className={`text-xs ${
+                    tp.phase === 'error'
+                      ? 'text-destructive'
+                      : tp.phase === 'complete'
+                        ? 'text-green-500'
+                        : 'text-muted-foreground'
+                  }`}
+                >
+                  {tp.phase}
+                  {tp.chunksComplete ? ` (${tp.chunksComplete})` : ''}
+                </span>
+              </div>
+              {tp.events && tp.events.length > 0 && (
+                <ul className="font-mono text-[11px] text-muted-foreground space-y-0.5 max-h-40 overflow-y-auto">
+                  {tp.events.map((ev, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="tabular-nums text-muted-foreground/60 w-12 shrink-0">
+                        {relTime(ev.timestamp)}
+                      </span>
+                      <span className="w-20 shrink-0">{ev.phase}</span>
+                      <span className="flex-1 break-all">{ev.detail ?? ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {tp.error && (
+                <div className="mt-1 text-xs text-destructive">{tp.error}</div>
+              )}
+            </div>
+          );
+        })}
         {transferProgress.length === 0 && isActive && (
           <div className="text-xs text-muted-foreground py-1">Starting transfer...</div>
         )}
