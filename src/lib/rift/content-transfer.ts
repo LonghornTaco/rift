@@ -60,6 +60,10 @@ export async function transferPath(
       },
     ],
   };
+  // Media library transfers contain binary blob data; the server handles the
+  // chunk differently when this flag is set. Omitting it for media paths
+  // triggers a "Maximum call stack size exceeded" inside Sitecore's handler.
+  const isMedia = /^\/sitecore\/media library(\/|$)/i.test(itemPath);
 
   report('creating');
 
@@ -112,7 +116,7 @@ export async function transferPath(
           await client.mutate('xmc.contentTransfer.saveChunk', {
             params: {
               path: { transferId, chunksetId: cs.ChunkSetId, chunkId },
-              query: { sitecoreContextId: targetContextId, isMedia: false },
+              query: { sitecoreContextId: targetContextId, isMedia },
               body: chunkBlob,
             },
           })
