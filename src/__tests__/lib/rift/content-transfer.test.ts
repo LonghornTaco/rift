@@ -1,78 +1,85 @@
 import { describe, it, expect, vi } from 'vitest';
 import { transferPath } from '@/lib/rift/content-transfer';
-import type { experimental_XMC } from '@sitecore-marketplace-sdk/xmc';
+import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 
-function createMockXmc() {
-  const createContentTransfer = vi.fn().mockResolvedValue({ data: {}, error: undefined });
-  const getContentTransferStatus = vi.fn().mockResolvedValue({
-    data: { State: 'Ready', ChunkSetsMetadata: [{ ChunkSetId: 'cs-1', ChunkCount: 1, TotalItemCount: 1 }] },
-    error: undefined,
+// The SDK proxy wraps responses as { data: <body>, request, response }.
+// Our helpers expect that shape, so mocks return it too.
+function wrap<T>(body: T) {
+  return { data: body, request: {} as Request, response: { status: 200 } as Response };
+}
+
+function createMockClient() {
+  const mutate = vi.fn(async (key: string) => {
+    switch (key) {
+      case 'xmc.contentTransfer.createContentTransfer':
+        return wrap({});
+      case 'xmc.contentTransfer.saveChunk':
+        return wrap({});
+      case 'xmc.contentTransfer.completeChunkSetTransfer':
+        return wrap({ ContentTransferFileName: 'file-1.raif' });
+      case 'xmc.contentTransfer.deleteContentTransfer':
+        return wrap({});
+      default:
+        throw new Error(`unexpected mutate key: ${key}`);
+    }
   });
-  const getChunk = vi.fn().mockResolvedValue({ data: new Blob(['chunk-data']), error: undefined });
-  const saveChunk = vi.fn().mockResolvedValue({ data: undefined, error: undefined });
-  const completeChunkSetTransfer = vi.fn().mockResolvedValue({
-    data: { ContentTransferFileName: 'file-1.raif' },
-    error: undefined,
+
+  const query = vi.fn(async (key: string) => {
+    switch (key) {
+      case 'xmc.contentTransfer.getContentTransferStatus':
+        return wrap({
+          State: 'Ready',
+          ChunkSetsMetadata: [{ ChunkSetId: 'cs-1', ChunkCount: 1 }],
+        });
+      case 'xmc.contentTransfer.getChunk':
+        return wrap(new Blob(['chunk-data']));
+      case 'xmc.contentTransfer.consumeFile':
+        return wrap({});
+      case 'xmc.contentTransfer.getBlobState':
+        return wrap({ status: 'OK' });
+      default:
+        throw new Error(`unexpected query key: ${key}`);
+    }
   });
-  const consumeFile = vi.fn().mockResolvedValue({ data: undefined, error: undefined });
-  const getBlobState = vi.fn().mockResolvedValue({ data: { status: 'OK' }, error: undefined });
-  const deleteContentTransfer = vi.fn().mockResolvedValue({ data: undefined, error: undefined });
 
-  const xmc = {
-    contentTransfer: {
-      createContentTransfer,
-      getContentTransferStatus,
-      getChunk,
-      saveChunk,
-      completeChunkSetTransfer,
-      consumeFile,
-      getBlobState,
-      deleteContentTransfer,
-    },
-  } as unknown as experimental_XMC;
-
-  return {
-    xmc,
-    createContentTransfer,
-    getContentTransferStatus,
-    getChunk,
-    saveChunk,
-    completeChunkSetTransfer,
-    consumeFile,
-    getBlobState,
-    deleteContentTransfer,
-  };
+  const client = { mutate, query } as unknown as ClientSDK;
+  return { client, mutate, query };
 }
 
 describe('transferPath', () => {
-  it('executes the full lifecycle via the typed XMC client', async () => {
-    const mock = createMockXmc();
+  it('executes the full lifecycle via client.mutate / client.query', async () => {
+    const { client, mutate, query } = createMockClient();
 
-    const progressUpdates: string[] = [];
-    await transferPath(mock.xmc, {
+    const phases: string[] = [];
+    await transferPath(client, {
       sourceContextId: 'src-ctx',
       targetContextId: 'tgt-ctx',
       itemPath: '/sitecore/content/Home',
       scope: 'SingleItem',
-      onProgress: (phase) => progressUpdates.push(phase),
+      onProgress: (phase) => phases.push(phase),
     });
 
-    expect(mock.createContentTransfer).toHaveBeenCalledTimes(2); // source + target
-    expect(mock.getContentTransferStatus).toHaveBeenCalledTimes(1);
-    expect(mock.getChunk).toHaveBeenCalledTimes(1);
-    expect(mock.saveChunk).toHaveBeenCalledTimes(1);
-    expect(mock.completeChunkSetTransfer).toHaveBeenCalledTimes(1);
-    expect(mock.consumeFile).toHaveBeenCalledTimes(1);
-    expect(mock.getBlobState).toHaveBeenCalledTimes(1);
-    expect(mock.deleteContentTransfer).toHaveBeenCalledTimes(2); // source + target cleanup
+    const mutateKeys = mutate.mock.calls.map((c) => c[0]);
+    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.createContentTransfer')).toHaveLength(2);
+    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.saveChunk')).toHaveLength(1);
+    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.completeChunkSetTransfer')).toHaveLength(1);
+    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.deleteContentTransfer')).toHaveLength(2);
 
-    // saveChunk should receive the Blob at the top level, not nested under params
-    const saveChunkCall = mock.saveChunk.mock.calls[0][0];
-    expect(saveChunkCall.path).toEqual({ transferId: expect.any(String), chunksetId: 'cs-1', chunkId: 0 });
-    expect(saveChunkCall.query).toEqual({ sitecoreContextId: 'tgt-ctx' });
-    expect(saveChunkCall.body).toBeInstanceOf(Blob);
+    const queryKeys = query.mock.calls.map((c) => c[0]);
+    expect(queryKeys).toContain('xmc.contentTransfer.getContentTransferStatus');
+    expect(queryKeys).toContain('xmc.contentTransfer.getChunk');
+    expect(queryKeys).toContain('xmc.contentTransfer.consumeFile');
+    expect(queryKeys).toContain('xmc.contentTransfer.getBlobState');
 
-    expect(progressUpdates).toContain('creating');
-    expect(progressUpdates).toContain('complete');
+    // saveChunk body must be a Blob, wrapped in the SDK's params envelope.
+    const saveCall = mutate.mock.calls.find((c) => c[0] === 'xmc.contentTransfer.saveChunk');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const saveArgs = saveCall?.[1] as any;
+    expect(saveArgs?.params?.path).toMatchObject({ chunksetId: 'cs-1', chunkId: 0 });
+    expect(saveArgs?.params?.query).toMatchObject({ sitecoreContextId: 'tgt-ctx' });
+    expect(saveArgs?.params?.body).toBeInstanceOf(Blob);
+
+    expect(phases).toContain('creating');
+    expect(phases).toContain('complete');
   });
 });

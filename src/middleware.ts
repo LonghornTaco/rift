@@ -1,9 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-// CSRF protection for Rift API routes.
-// Auth is now handled client-side by @auth0/auth0-react (SPA SDK),
-// so we no longer need @auth0/nextjs-auth0 middleware.
+// CSRF protection for Rift API routes. Rejects cross-origin POSTs by comparing
+// Origin/Referer against the request host.
 
 function logDeny(route: string, clientIp: string, reason: string) {
   console.warn(JSON.stringify({

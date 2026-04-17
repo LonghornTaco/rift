@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
-import { RiftAuthProvider } from '@/lib/rift/auth-provider';
 import { APP_VERSION } from '@/lib/version';
 import { useMarketplaceClient } from '@/lib/rift/marketplace-client';
 import { RiftView, RiftPreset } from '@/lib/rift/types';
@@ -31,19 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
-// --- Root export: wraps app in auth provider ---
-
 export function Rift() {
-  return (
-    <RiftAuthProvider>
-      <RiftApp />
-    </RiftAuthProvider>
-  );
-}
-
-// --- Inner app: consumes SDK state ---
-
-function RiftApp() {
   const { client, environments, isInitialized, error } = useMarketplaceClient();
 
   const [activeView, setActiveView] = useState<RiftView>('migrate');

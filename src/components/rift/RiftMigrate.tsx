@@ -16,8 +16,7 @@ import {
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
-import { transferPathViaApi } from '@/lib/rift/transfer-client';
-import { useAuth } from '@/lib/rift/auth-provider';
+import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
@@ -63,7 +62,6 @@ interface RiftMigrateProps {
 
 export function RiftMigrate({ client, environments, loadedPreset, onBack }: RiftMigrateProps) {
   const [parallelPaths, setParallelPaths] = useState(DEFAULT_SETTINGS.parallelPaths);
-  const { getAccessTokenSilently, loginWithPopup } = useAuth();
 
   // Load persisted settings
   useEffect(() => {
@@ -283,56 +281,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
   const canSavePreset = selectedPaths.length > 0;
 
-  // --- Auth helper: open login in a new tab, relay token through server ---
-
-  async function loginViaNewTab(sdk: ClientSDK): Promise<string> {
-    const nonce = crypto.randomUUID();
-    const baseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL ?? '';
-    sdk.navigateToExternalUrl(
-      `${baseUrl}/auth/login-redirect?nonce=${encodeURIComponent(nonce)}`,
-      true
-    );
-
-    // Poll the server-side relay until the login tab posts the token
-    const POLL_INTERVAL = 2000;
-    const MAX_ATTEMPTS = 60; // 2 minutes
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-      try {
-        const res = await fetch(`/api/auth/token-relay?nonce=${encodeURIComponent(nonce)}`);
-        if (res.ok) {
-          const data = (await res.json()) as { token: string };
-          if (data.token) return data.token;
-        }
-      } catch {
-        // Network error — keep polling
-      }
-    }
-    throw new Error('Sign-in timed out — please try again');
-  }
-
   // --- Migration execution ---
 
   async function executeMigration(paths: MigrationPath[]) {
-    let token: string;
-    try {
-      token = await getAccessTokenSilently();
-    } catch (silentErr) {
-      console.warn('[Rift] Silent token failed, trying popup login:', silentErr);
-      try {
-        await loginWithPopup();
-        token = await getAccessTokenSilently();
-      } catch (popupErr) {
-        console.warn('[Rift] Popup login failed, opening login tab:', popupErr);
-        try {
-          token = await loginViaNewTab(client);
-        } catch (tabErr) {
-          console.error('[Rift] All auth methods failed:', tabErr);
-          return;
-        }
-      }
-    }
-
     setIsMigrating(true);
     setMigrationComplete(false);
     const controller = new AbortController();
@@ -350,15 +301,15 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
     const settings = getSettings();
     const transfers = paths.map((path, index) => {
-      return transferPathViaApi({
+      return transferPath(client, {
         sourceContextId: sourceEnv.contextId,
         targetContextId: targetEnv.contextId,
         itemPath: path.itemPath,
         scope: path.scope,
-        accessToken: token!,
         signal: controller.signal,
         onProgress: (phase, detail) => {
-          progress[index] = { ...progress[index], phase, chunksComplete: detail ? parseInt(detail) : undefined };
+          const chunksComplete = detail ? parseInt(detail.split('/')[0]) : undefined;
+          progress[index] = { ...progress[index], phase, chunksComplete };
           setTransferProgress([...progress]);
         },
       }).catch((err) => {
