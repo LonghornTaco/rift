@@ -1,5 +1,54 @@
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
-import type { TreeNode, SiteInfo } from './types';
+import type { TreeNode, SiteInfo, DualTreeNode } from './types';
+
+/**
+ * Merge two same-level TreeNode lists into DualTreeNode pairs, keyed by path.
+ *
+ * - Preserves source order for paths present in source.
+ * - Appends target-only paths at the end in target order.
+ * - `name` comes from source when present, otherwise target.
+ * - `hasChildren` is true if either side reports hasChildren.
+ * - When `target` is null or undefined, every pair has `target: undefined`.
+ */
+export function zipDualTreeChildren(
+  source: TreeNode[],
+  target: TreeNode[] | null | undefined,
+): DualTreeNode[] {
+  const targetByPath = new Map<string, TreeNode>();
+  if (target) {
+    for (const t of target) targetByPath.set(t.path, t);
+  }
+
+  const paired: DualTreeNode[] = [];
+  const seen = new Set<string>();
+
+  for (const s of source) {
+    const t = targetByPath.get(s.path);
+    paired.push({
+      path: s.path,
+      name: s.name,
+      hasChildren: s.hasChildren || (t?.hasChildren ?? false),
+      source: s,
+      target: t,
+    });
+    seen.add(s.path);
+  }
+
+  if (target) {
+    for (const t of target) {
+      if (seen.has(t.path)) continue;
+      paired.push({
+        path: t.path,
+        name: t.name,
+        hasChildren: t.hasChildren,
+        source: undefined,
+        target: t,
+      });
+    }
+  }
+
+  return paired;
+}
 
 /**
  * Fetch children of a tree node via Authoring GraphQL API.
