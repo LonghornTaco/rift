@@ -638,6 +638,8 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
                 onChildrenLoaded={handleChildrenLoaded}
                 disabled={isMigrating}
                 refreshKey={treeRefreshKey}
+                onCompareItem={() => {}}
+                compareTargetPath={null}
               />
             ) : (
               <div className="text-sm text-muted-foreground">

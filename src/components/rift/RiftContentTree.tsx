@@ -19,6 +19,8 @@ interface SourceCellProps {
   isInherited: boolean;
   isAncestorDisabled: boolean;
   onTogglePath: (node: TreeNode) => void;
+  onCompareItem: (node: DualTreeNode) => void;
+  isCompareTarget: boolean;
 }
 
 function SourceCell({
@@ -27,10 +29,14 @@ function SourceCell({
   isInherited,
   isAncestorDisabled,
   onTogglePath,
+  onCompareItem,
+  isCompareTarget,
 }: SourceCellProps) {
   if (!node.source) {
     return <GhostSlot />;
   }
+
+  const Icon = node.hasChildren ? Folder : File;
 
   return (
     <div className="flex items-center gap-1 min-w-0">
@@ -44,25 +50,28 @@ function SourceCell({
         )}
       />
 
-      {(() => {
-        const Icon = node.hasChildren ? Folder : File;
-        return (
-          <Icon
-            className={cn('w-4 h-4 shrink-0 text-muted-foreground', isAncestorDisabled && 'opacity-40')}
-            aria-hidden="true"
-          />
-        );
-      })()}
-
-      <span
+      <button
+        type="button"
+        onClick={() => onCompareItem(node)}
         className={cn(
-          'truncate',
-          isSelected ? 'font-bold' : 'font-normal',
-          (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
+          'flex items-center gap-1 min-w-0 text-left rounded-sm px-1 -mx-1',
+          isCompareTarget && 'bg-accent/60',
         )}
       >
-        {node.name}
-      </span>
+        <Icon
+          className={cn('w-4 h-4 shrink-0 text-muted-foreground', isAncestorDisabled && 'opacity-40')}
+          aria-hidden="true"
+        />
+        <span
+          className={cn(
+            'truncate',
+            isSelected ? 'font-bold' : 'font-normal',
+            (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
+          )}
+        >
+          {node.name}
+        </span>
+      </button>
     </div>
   );
 }
@@ -76,9 +85,11 @@ function SourceCell({
 interface TargetCellProps {
   node: DualTreeNode;
   targetContextId: string | null;
+  onCompareItem: (node: DualTreeNode) => void;
+  isCompareTarget: boolean;
 }
 
-function TargetCell({ node, targetContextId }: TargetCellProps) {
+function TargetCell({ node, targetContextId, onCompareItem, isCompareTarget }: TargetCellProps) {
   if (targetContextId === null) {
     return (
       <div className="flex items-center min-w-0 text-muted-foreground/60 text-sm">
@@ -95,13 +106,19 @@ function TargetCell({ node, targetContextId }: TargetCellProps) {
   const Icon = node.hasChildren ? Folder : File;
 
   return (
-    <div
-      className={cn('flex items-center gap-1 min-w-0', tint)}
+    <button
+      type="button"
+      onClick={() => onCompareItem(node)}
+      className={cn(
+        'flex items-center gap-1 min-w-0 text-left rounded-sm px-1 -mx-1',
+        tint,
+        isCompareTarget && 'bg-accent/60',
+      )}
       title={node.diff === 'different' ? 'Target differs from source' : undefined}
     >
       <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
       <span className="truncate">{node.target.name}</span>
-    </div>
+    </button>
   );
 }
 
@@ -148,6 +165,8 @@ interface TreeNodeRowProps {
   /** Set of child paths to show when hidden items are off. If undefined, no filtering. */
   visibleChildPaths?: Set<string>;
   targetContextId: string | null;
+  onCompareItem: (node: DualTreeNode) => void;
+  compareTargetPath: string | null;
 }
 
 function TreeNodeRow({
@@ -164,6 +183,8 @@ function TreeNodeRow({
   disabledAncestorPaths,
   visibleChildPaths,
   targetContextId,
+  onCompareItem,
+  compareTargetPath,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.path);
   const isLoading = loadingNodes.has(node.path);
@@ -210,12 +231,19 @@ function TreeNodeRow({
             isInherited={isInherited}
             isAncestorDisabled={isAncestorDisabled}
             onTogglePath={onTogglePath}
+            onCompareItem={onCompareItem}
+            isCompareTarget={compareTargetPath === node.path}
           />
         </div>
 
         {/* Target half */}
         <div className="flex-1 min-w-0">
-          <TargetCell node={node} targetContextId={targetContextId} />
+          <TargetCell
+            node={node}
+            targetContextId={targetContextId}
+            onCompareItem={onCompareItem}
+            isCompareTarget={compareTargetPath === node.path}
+          />
         </div>
       </div>
 
@@ -235,6 +263,8 @@ function TreeNodeRow({
             showHiddenItems={showHiddenItems}
             disabledAncestorPaths={disabledAncestorPaths}
             targetContextId={targetContextId}
+            onCompareItem={onCompareItem}
+            compareTargetPath={compareTargetPath}
           />
         ))}
     </>
@@ -252,6 +282,8 @@ interface RiftContentTreeProps {
   onChildrenLoaded?: (parentPath: string, children: TreeNode[]) => void;
   disabled?: boolean;
   refreshKey?: number;
+  onCompareItem: (node: DualTreeNode) => void;
+  compareTargetPath: string | null;
 }
 
 export function RiftContentTree({
@@ -265,6 +297,8 @@ export function RiftContentTree({
   onChildrenLoaded,
   disabled,
   refreshKey,
+  onCompareItem,
+  compareTargetPath,
 }: RiftContentTreeProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [childrenCache, setChildrenCache] = useState<Map<string, DualTreeNode[]>>(new Map());
@@ -585,6 +619,8 @@ export function RiftContentTree({
     showHiddenItems,
     disabledAncestorPaths: pathInfo?.contentAncestorPaths,
     targetContextId,
+    onCompareItem,
+    compareTargetPath,
   };
 
   // Render a branch of the tree with per-level filtering
@@ -632,11 +668,18 @@ export function RiftContentTree({
               isInherited={isInherited}
               isAncestorDisabled={isAncestorDisabled}
               onTogglePath={onTogglePath}
+              onCompareItem={onCompareItem}
+              isCompareTarget={compareTargetPath === node.path}
             />
           </div>
 
           <div className="flex-1 min-w-0">
-            <TargetCell node={node} targetContextId={targetContextId} />
+            <TargetCell
+              node={node}
+              targetContextId={targetContextId}
+              onCompareItem={onCompareItem}
+              isCompareTarget={compareTargetPath === node.path}
+            />
           </div>
         </div>
 
