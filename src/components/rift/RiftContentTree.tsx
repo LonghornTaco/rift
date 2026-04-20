@@ -8,6 +8,110 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * Renders the left half of a dual-tree row. Shows checkbox + icon + name when the item
+ * exists on source; a ghost slot (dashed hatched) when it does not.
+ */
+interface SourceCellProps {
+  node: DualTreeNode;
+  isSelected: boolean;
+  isInherited: boolean;
+  isAncestorDisabled: boolean;
+  onTogglePath: (node: TreeNode) => void;
+}
+
+function SourceCell({
+  node,
+  isSelected,
+  isInherited,
+  isAncestorDisabled,
+  onTogglePath,
+}: SourceCellProps) {
+  if (!node.source) {
+    return <GhostSlot />;
+  }
+
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <Checkbox
+        checked={isSelected || isInherited}
+        onCheckedChange={() => onTogglePath(node.source!)}
+        disabled={isInherited || isAncestorDisabled}
+        className={cn(
+          'shrink-0',
+          (isInherited || isAncestorDisabled) && 'opacity-50 pointer-events-none'
+        )}
+      />
+
+      <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
+        {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
+      </span>
+
+      <span
+        className={cn(
+          'truncate',
+          isSelected ? 'font-bold' : 'font-normal',
+          (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
+        )}
+      >
+        {node.name}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Renders the right half of a dual-tree row.
+ * - Real node: icon + name (no checkbox).
+ * - Not on target: ghost slot.
+ * - No target env selected: muted em-dash.
+ */
+interface TargetCellProps {
+  node: DualTreeNode;
+  targetContextId: string | null;
+}
+
+function TargetCell({ node, targetContextId }: TargetCellProps) {
+  if (targetContextId === null) {
+    return (
+      <div className="flex items-center min-w-0 text-muted-foreground/60 text-sm">
+        &mdash;
+      </div>
+    );
+  }
+
+  if (!node.target) {
+    return <GhostSlot />;
+  }
+
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <span className="text-muted-foreground shrink-0">
+        {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
+      </span>
+      <span className="truncate text-foreground">{node.target.name}</span>
+    </div>
+  );
+}
+
+/**
+ * A dashed, hatched box of uniform row height, used when an item exists on one side but
+ * not the other.
+ */
+function GhostSlot() {
+  return (
+    <div
+      className="inline-block border border-dashed border-muted-foreground/50 rounded-sm h-4 w-20"
+      style={{
+        backgroundImage:
+          'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(127,127,127,0.15) 3px, rgba(127,127,127,0.15) 6px)',
+      }}
+      aria-label="not present"
+      title="not present"
+    />
+  );
+}
+
 interface TreeNodeRowProps {
   node: DualTreeNode;
   depth: number;
@@ -23,6 +127,7 @@ interface TreeNodeRowProps {
   disabledAncestorPaths?: Set<string>;
   /** Set of child paths to show when hidden items are off. If undefined, no filtering. */
   visibleChildPaths?: Set<string>;
+  targetContextId: string | null;
 }
 
 function TreeNodeRow({
@@ -38,28 +143,29 @@ function TreeNodeRow({
   showHiddenItems,
   disabledAncestorPaths,
   visibleChildPaths,
+  targetContextId,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.path);
   const isLoading = loadingNodes.has(node.path);
-  const isSelected = selectedPathSet.has(node.path);
-  const isInherited = inheritedPaths.has(node.path);
+  const hasSource = !!node.source;
+  // Only report selected/inherited when there's a source node — target-only rows should
+  // never render a checked state even if the path coincidentally appears in selection.
+  const isSelected = hasSource && selectedPathSet.has(node.path);
+  const isInherited = hasSource && inheritedPaths.has(node.path);
   const isAncestorDisabled = disabledAncestorPaths?.has(node.path) ?? false;
   let children = childrenCache.get(node.path) ?? [];
 
-  // Filter children based on visible paths (when hidden items are off)
   if (visibleChildPaths) {
     children = children.filter((c) => visibleChildPaths.has(c.path));
   }
 
-  const sourceNode = node.source;
-
   return (
     <>
       <div
-        className="flex items-center gap-1 leading-8 text-sm"
+        className="flex items-center gap-2 leading-8 text-sm"
         style={{ paddingLeft: depth * 20 }}
       >
-        {/* Expand arrow */}
+        {/* Shared expand arrow */}
         {node.hasChildren ? (
           <span
             onClick={() => onExpand(node)}
@@ -71,39 +177,30 @@ function TreeNodeRow({
           <span className="w-4 shrink-0" />
         )}
 
-        {/* Loading indicator */}
         {isLoading && (
           <span className="text-muted-foreground text-xs shrink-0">...</span>
         )}
 
-        {/* Checkbox */}
-        <Checkbox
-          checked={isSelected || isInherited}
-          onCheckedChange={() => sourceNode && onTogglePath(sourceNode)}
-          disabled={isInherited || isAncestorDisabled || !sourceNode}
-          className={cn(
-            'shrink-0',
-            (isInherited || isAncestorDisabled || !sourceNode) && 'opacity-50 pointer-events-none'
-          )}
-        />
+        {/* Source half */}
+        <div className="flex-1 min-w-0">
+          <SourceCell
+            node={node}
+            isSelected={isSelected}
+            isInherited={isInherited}
+            isAncestorDisabled={isAncestorDisabled}
+            onTogglePath={onTogglePath}
+          />
+        </div>
 
-        {/* Icon */}
-        <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
-          {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
-        </span>
+        {/* Divider */}
+        <div className="w-px h-6 bg-border shrink-0" />
 
-        {/* Name */}
-        <span
-          className={cn(
-            isSelected ? 'font-bold' : 'font-normal',
-            (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
-          )}
-        >
-          {node.name}
-        </span>
+        {/* Target half */}
+        <div className="flex-1 min-w-0">
+          <TargetCell node={node} targetContextId={targetContextId} />
+        </div>
       </div>
 
-      {/* Children — pass visibleChildPaths only to this level, children render without it */}
       {isExpanded &&
         children.map((child) => (
           <TreeNodeRow
@@ -119,6 +216,7 @@ function TreeNodeRow({
             onTogglePath={onTogglePath}
             showHiddenItems={showHiddenItems}
             disabledAncestorPaths={disabledAncestorPaths}
+            targetContextId={targetContextId}
           />
         ))}
     </>
@@ -466,15 +564,16 @@ export function RiftContentTree({
     onTogglePath,
     showHiddenItems,
     disabledAncestorPaths: pathInfo?.contentAncestorPaths,
+    targetContextId,
   };
 
   // Render a branch of the tree with per-level filtering
   const renderFilteredBranch = (node: DualTreeNode, depth: number, isMedia: boolean) => {
     const isExpanded = expandedNodes.has(node.path);
     const isLoadingNode = loadingNodes.has(node.path);
-    const isSelected = selectedPathSet.has(node.path);
-    const isInherited = inheritedPaths.has(node.path);
-    // Content tree ancestors (up to and including site root) have disabled checkboxes
+    const hasSource = !!node.source;
+    const isSelected = hasSource && selectedPathSet.has(node.path);
+    const isInherited = hasSource && inheritedPaths.has(node.path);
     const isAncestorDisabled = !isMedia && (pathInfo?.contentAncestorPaths.has(node.path) ?? false);
     let children = childrenCache.get(node.path) ?? [];
 
@@ -483,12 +582,10 @@ export function RiftContentTree({
       children = children.filter((c) => visiblePaths.has(c.path));
     }
 
-    const sourceNode = node.source;
-
     return (
       <div key={node.path}>
         <div
-          className="flex items-center gap-1 leading-8 text-sm"
+          className="flex items-center gap-2 leading-8 text-sm"
           style={{ paddingLeft: depth * 20 }}
         >
           {node.hasChildren ? (
@@ -506,28 +603,21 @@ export function RiftContentTree({
             <span className="text-muted-foreground text-xs shrink-0">...</span>
           )}
 
-          <Checkbox
-            checked={isSelected || isInherited}
-            onCheckedChange={() => sourceNode && onTogglePath(sourceNode)}
-            disabled={isInherited || isAncestorDisabled || !sourceNode}
-            className={cn(
-              'shrink-0',
-              (isInherited || isAncestorDisabled || !sourceNode) && 'opacity-50 pointer-events-none'
-            )}
-          />
+          <div className="flex-1 min-w-0">
+            <SourceCell
+              node={node}
+              isSelected={isSelected}
+              isInherited={isInherited}
+              isAncestorDisabled={isAncestorDisabled}
+              onTogglePath={onTogglePath}
+            />
+          </div>
 
-          <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
-            {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
-          </span>
+          <div className="w-px h-6 bg-border shrink-0" />
 
-          <span
-            className={cn(
-              isSelected ? 'font-bold' : 'font-normal',
-              (isInherited || isAncestorDisabled) ? 'text-muted-foreground' : 'text-foreground',
-            )}
-          >
-            {node.name}
-          </span>
+          <div className="flex-1 min-w-0">
+            <TargetCell node={node} targetContextId={targetContextId} />
+          </div>
         </div>
 
         {isExpanded &&
@@ -562,6 +652,20 @@ export function RiftContentTree({
           />
           Show hidden items
         </label>
+      </div>
+
+      {targetContextId === null && (
+        <div className="text-xs text-muted-foreground mb-2 italic">
+          Select a target environment to populate &rarr;
+        </div>
+      )}
+
+      {/* Column headers */}
+      <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+        <span className="w-4 shrink-0" />
+        <div className="flex-1">Source</div>
+        <div className="w-px" />
+        <div className="flex-1">Target</div>
       </div>
 
       {isLoading ? (
