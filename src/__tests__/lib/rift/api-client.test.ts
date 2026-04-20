@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchTreeChildren, fetchSites, zipDualTreeChildren, fetchDualTreeChildren } from '@/lib/rift/api-client';
+import { fetchTreeChildren, fetchSites, zipDualTreeChildren, fetchDualTreeChildren, fetchItemFields } from '@/lib/rift/api-client';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TreeNode } from '@/lib/rift/types';
 
@@ -348,5 +348,49 @@ describe('fetchDualTreeChildren', () => {
     expect(result.map((n) => n.path)).toEqual(['/site/Home', '/site/Legacy']);
     expect(result[1].source).toBeUndefined();
     expect(result[1].target?.itemId).toBe('tgt-legacy');
+  });
+});
+
+describe('fetchItemFields', () => {
+  it('uses excludeStandardFields=true by default', async () => {
+    const mutate = vi.fn().mockResolvedValue({
+      data: {
+        data: {
+          item: {
+            itemId: 'i', name: 'n', path: '/p',
+            template: { templateId: 't', name: 'T' },
+            fields: { nodes: [{ name: 'Title', value: 'Home' }] },
+          },
+        },
+      },
+    });
+    const client = { mutate, query: vi.fn() } as unknown as ClientSDK;
+
+    await fetchItemFields(client, 'ctx', '/p');
+
+    const call = mutate.mock.calls[0][1];
+    expect(call.params.body.query).toContain('excludeStandardFields: true');
+    expect(call.params.body.query).toContain('ownFields: true');
+  });
+
+  it('uses excludeStandardFields=false when includeStandard is true', async () => {
+    const mutate = vi.fn().mockResolvedValue({
+      data: {
+        data: {
+          item: {
+            itemId: 'i', name: 'n', path: '/p',
+            template: { templateId: 't', name: 'T' },
+            fields: { nodes: [] },
+          },
+        },
+      },
+    });
+    const client = { mutate, query: vi.fn() } as unknown as ClientSDK;
+
+    await fetchItemFields(client, 'ctx', '/p', { includeStandard: true });
+
+    const call = mutate.mock.calls[0][1];
+    expect(call.params.body.query).toContain('excludeStandardFields: false');
+    expect(call.params.body.query).toContain('ownFields: true');
   });
 });

@@ -188,18 +188,23 @@ export async function fetchSites(
 
 /**
  * Fetch item fields via Authoring GraphQL API.
+ * - Default: returns item's own non-standard fields.
+ * - `includeStandard: true`: returns own fields INCLUDING standard fields (`__Updated`,
+ *   `__Revision`, security metadata, etc.). Used for on-demand compare view expansion.
  */
 export async function fetchItemFields(
   client: ClientSDK,
   contextId: string,
-  itemPath: string
+  itemPath: string,
+  options?: { includeStandard?: boolean },
 ): Promise<{ itemId: string; name: string; path: string; templateId: string; templateName: string; fields: Record<string, string> }> {
+  const excludeStandard = !options?.includeStandard;
   const query = {
     query: `query GetItemFields($path: String!) {
       item(where: { path: $path }) {
         itemId name path
         template { templateId: itemId name }
-        fields(ownFields: true, excludeStandardFields: true) {
+        fields(ownFields: true, excludeStandardFields: ${excludeStandard}) {
           nodes { name value }
         }
       }
