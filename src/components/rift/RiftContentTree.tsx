@@ -653,8 +653,8 @@ export function RiftContentTree({
     <div className="relative min-h-full">
       {/* Continuous column divider between Source and Target */}
       <div
-        className="absolute top-0 bottom-0 w-px bg-muted-foreground/50 pointer-events-none"
-        style={{ left: 'calc(50% + 12px)' }}
+        className="absolute top-0 bottom-0 w-px bg-border pointer-events-none"
+        style={{ left: '50%' }}
         aria-hidden="true"
       />
 
