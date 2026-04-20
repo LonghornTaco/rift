@@ -195,13 +195,6 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
             }
           }
         }
-      } else if (sp.scope === 'ItemAndChildren') {
-        const directChildren = loadedTreeNodes.get(sp.itemPath);
-        if (directChildren) {
-          for (const child of directChildren) {
-            inherited.add(child.path);
-          }
-        }
       }
     }
     for (const sp of selectedPaths) {

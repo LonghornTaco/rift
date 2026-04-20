@@ -321,9 +321,7 @@ export function RiftContentTree({
   }, [processPrefetchQueue]);
 
   const selectedPathSet = new Set(
-    selectedPaths
-      .filter((p) => p.scope === 'SingleItem' || p.scope === 'ItemAndChildren' || p.scope === 'ItemAndDescendants')
-      .map((p) => p.itemPath)
+    selectedPaths.map((p) => p.itemPath)
   );
 
   // Parse rootPath into segments for building filter paths

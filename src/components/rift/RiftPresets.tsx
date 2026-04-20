@@ -24,7 +24,6 @@ interface RiftPresetsProps {
 
 const scopeLabels: Record<MigrationPath['scope'], string> = {
   SingleItem: 'Item only',
-  ItemAndChildren: 'Item + children',
   ItemAndDescendants: 'Item + descendants',
 };
 

@@ -25,7 +25,6 @@ function truncatePath(path: string): string {
 
 const scopeValues: { label: string; value: MigrationPath['scope'] }[] = [
   { label: 'Item Only', value: 'SingleItem' },
-  { label: 'Item + Children', value: 'ItemAndChildren' },
   { label: 'Item + Descendants', value: 'ItemAndDescendants' },
 ];
 

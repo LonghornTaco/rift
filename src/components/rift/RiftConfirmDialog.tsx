@@ -22,7 +22,6 @@ interface RiftConfirmDialogProps {
 
 const scopeLabels: Record<string, string> = {
   SingleItem: 'Item only',
-  ItemAndChildren: 'Item + children',
   ItemAndDescendants: 'Item + descendants',
 };
 
