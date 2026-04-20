@@ -84,6 +84,44 @@ export async function fetchTreeChildren(
 }
 
 /**
+ * Fetch children from source and target envs in parallel and zip into DualTreeNode pairs.
+ *
+ * - When `targetContextId` is null, only the source is fetched.
+ * - When the target fetch rejects, degrades gracefully to source-only pairs (logged silently).
+ * - When the source fetch rejects, the error is re-thrown (expansion fails like today).
+ */
+export async function fetchDualTreeChildren(
+  client: ClientSDK,
+  sourceContextId: string,
+  targetContextId: string | null,
+  parentPath: string,
+): Promise<DualTreeNode[]> {
+  const sourcePromise = fetchTreeChildren(client, sourceContextId, parentPath);
+  const targetPromise = targetContextId
+    ? fetchTreeChildren(client, targetContextId, parentPath)
+    : Promise.resolve(null);
+
+  const [sourceResult, targetResult] = await Promise.allSettled([sourcePromise, targetPromise]);
+
+  if (sourceResult.status === 'rejected') {
+    throw sourceResult.reason;
+  }
+
+  const sourceChildren = sourceResult.value;
+  const targetChildren =
+    targetResult.status === 'fulfilled' ? targetResult.value : null;
+
+  if (targetResult.status === 'rejected' && targetContextId) {
+    console.warn(
+      `[Rift] Target tree fetch failed for ${parentPath}:`,
+      targetResult.reason,
+    );
+  }
+
+  return zipDualTreeChildren(sourceChildren, targetChildren);
+}
+
+/**
  * Fetch sites via XM Apps Sites REST API.
  * Fetches both sites and collections to construct the full content root path.
  */

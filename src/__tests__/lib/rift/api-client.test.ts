@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchTreeChildren, fetchSites, zipDualTreeChildren } from '@/lib/rift/api-client';
+import { fetchTreeChildren, fetchSites, zipDualTreeChildren, fetchDualTreeChildren } from '@/lib/rift/api-client';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TreeNode } from '@/lib/rift/types';
 
@@ -110,5 +110,116 @@ describe('zipDualTreeChildren', () => {
     const result = zipDualTreeChildren(source, null);
     expect(result).toHaveLength(2);
     expect(result.every((n) => n.target === undefined)).toBe(true);
+  });
+});
+
+function mockClientWithResponses(responses: unknown[]): ClientSDK {
+  const mutate = vi.fn();
+  for (const r of responses) mutate.mockResolvedValueOnce({ data: { data: r } });
+  return { mutate, query: vi.fn() } as unknown as ClientSDK;
+}
+
+function rejectingMutateAtIndex(responses: unknown[], rejectIndex: number, error: Error): ClientSDK {
+  const mutate = vi.fn();
+  responses.forEach((r, i) => {
+    if (i === rejectIndex) mutate.mockRejectedValueOnce(error);
+    else mutate.mockResolvedValueOnce({ data: { data: r } });
+  });
+  return { mutate, query: vi.fn() } as unknown as ClientSDK;
+}
+
+function treeResponse(children: { itemId: string; name: string; path: string; hasChildren?: boolean }[]) {
+  return {
+    item: {
+      children: {
+        nodes: children.map((c) => ({
+          itemId: c.itemId,
+          name: c.name,
+          path: c.path,
+          hasChildren: c.hasChildren ?? false,
+          template: { name: 'Page' },
+        })),
+      },
+    },
+  };
+}
+
+describe('fetchDualTreeChildren', () => {
+  it('pairs source and target children when both fetches succeed', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([
+        { itemId: 'src-home', name: 'Home', path: '/site/Home' },
+        { itemId: 'src-about', name: 'About', path: '/site/About' },
+      ]),
+      treeResponse([
+        { itemId: 'tgt-home', name: 'Home', path: '/site/Home' },
+      ]),
+    ]);
+
+    const result = await fetchDualTreeChildren(client, 'src-ctx', 'tgt-ctx', '/site');
+
+    expect(result).toHaveLength(2);
+    expect(result[0].source?.itemId).toBe('src-home');
+    expect(result[0].target?.itemId).toBe('tgt-home');
+    expect(result[1].source?.itemId).toBe('src-about');
+    expect(result[1].target).toBeUndefined();
+  });
+
+  it('skips the target fetch when targetContextId is null', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([{ itemId: 'src-home', name: 'Home', path: '/site/Home' }]),
+    ]);
+
+    const result = await fetchDualTreeChildren(client, 'src-ctx', null, '/site');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].source).toBeDefined();
+    expect(result[0].target).toBeUndefined();
+    expect(client.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns source-only pairs when the target fetch rejects', async () => {
+    const client = rejectingMutateAtIndex(
+      [
+        treeResponse([{ itemId: 'src-home', name: 'Home', path: '/site/Home' }]),
+        null,
+      ],
+      1,
+      new Error('target site missing'),
+    );
+
+    const result = await fetchDualTreeChildren(client, 'src-ctx', 'tgt-ctx', '/site');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].source).toBeDefined();
+    expect(result[0].target).toBeUndefined();
+  });
+
+  it('propagates the source-side error when the source fetch rejects', async () => {
+    const client = rejectingMutateAtIndex(
+      [null, treeResponse([])],
+      0,
+      new Error('source unreachable'),
+    );
+
+    await expect(
+      fetchDualTreeChildren(client, 'src-ctx', 'tgt-ctx', '/site'),
+    ).rejects.toThrow('source unreachable');
+  });
+
+  it('includes target-only children appended after source children', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([{ itemId: 'src-home', name: 'Home', path: '/site/Home' }]),
+      treeResponse([
+        { itemId: 'tgt-home', name: 'Home', path: '/site/Home' },
+        { itemId: 'tgt-legacy', name: 'Legacy', path: '/site/Legacy' },
+      ]),
+    ]);
+
+    const result = await fetchDualTreeChildren(client, 'src-ctx', 'tgt-ctx', '/site');
+
+    expect(result.map((n) => n.path)).toEqual(['/site/Home', '/site/Legacy']);
+    expect(result[1].source).toBeUndefined();
+    expect(result[1].target?.itemId).toBe('tgt-legacy');
   });
 });
