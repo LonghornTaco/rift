@@ -16,8 +16,22 @@ describe('fetchTreeChildren', () => {
       item: {
         children: {
           nodes: [
-            { itemId: 'id1', name: 'Home', path: '/sitecore/content/Home', hasChildren: true, template: { name: 'Page' } },
-            { itemId: 'id2', name: 'About', path: '/sitecore/content/About', hasChildren: false, template: { name: 'Page' } },
+            {
+              itemId: 'id1',
+              name: 'Home',
+              path: '/sitecore/content/Home',
+              hasChildren: true,
+              template: { name: 'Page' },
+              updated: { value: '20260419T153045Z' },
+            },
+            {
+              itemId: 'id2',
+              name: 'About',
+              path: '/sitecore/content/About',
+              hasChildren: false,
+              template: { name: 'Page' },
+              updated: null,
+            },
           ],
         },
       },
@@ -31,7 +45,9 @@ describe('fetchTreeChildren', () => {
       path: '/sitecore/content/Home',
       hasChildren: true,
       templateName: 'Page',
+      updated: '20260419T153045Z',
     });
+    expect(result[1].updated).toBeUndefined();
   });
 });
 

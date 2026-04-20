@@ -61,7 +61,7 @@ export async function fetchTreeChildren(
   const query = {
     query: `query GetChildren($path: String!) {
       item(where: { path: $path }) {
-        children { nodes { itemId name path hasChildren template { name } } }
+        children { nodes { itemId name path hasChildren template { name } updated: field(name: "__Updated") { value } } }
       }
     }`,
     variables: { path: parentPath },
@@ -74,13 +74,27 @@ export async function fetchTreeChildren(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resData = response.data as any;
   const nodes = resData?.data?.item?.children?.nodes ?? [];
-  return nodes.map((n: { itemId: string; name: string; path: string; hasChildren: boolean; template: { name: string } }) => ({
-    itemId: n.itemId,
-    name: n.name,
-    path: n.path,
-    hasChildren: n.hasChildren,
-    templateName: n.template?.name ?? '',
-  }));
+  return nodes.map(
+    (n: {
+      itemId: string;
+      name: string;
+      path: string;
+      hasChildren: boolean;
+      template: { name: string };
+      updated?: { value?: string } | null;
+    }) => {
+      const mapped: TreeNode = {
+        itemId: n.itemId,
+        name: n.name,
+        path: n.path,
+        hasChildren: n.hasChildren,
+        templateName: n.template?.name ?? '',
+      };
+      const updatedValue = n.updated?.value;
+      if (updatedValue) mapped.updated = updatedValue;
+      return mapped;
+    },
+  );
 }
 
 /**
