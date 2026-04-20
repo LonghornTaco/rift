@@ -44,9 +44,15 @@ function SourceCell({
         )}
       />
 
-      <span className={cn("text-muted-foreground shrink-0", isAncestorDisabled && 'opacity-40')}>
-        {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
-      </span>
+      {(() => {
+        const Icon = node.hasChildren ? Folder : File;
+        return (
+          <Icon
+            className={cn('w-4 h-4 shrink-0 text-muted-foreground', isAncestorDisabled && 'opacity-40')}
+            aria-hidden="true"
+          />
+        );
+      })()}
 
       <span
         className={cn(
@@ -82,7 +88,7 @@ function TargetCell({ node, targetContextId }: TargetCellProps) {
   }
 
   if (!node.target) {
-    return <GhostSlot />;
+    return <GhostSlot tone="warning" />;
   }
 
   const tint = node.diff === 'different' ? 'text-amber-500' : 'text-muted-foreground';
@@ -102,18 +108,26 @@ function TargetCell({ node, targetContextId }: TargetCellProps) {
 /**
  * A dashed, hatched box of uniform row height, used when an item exists on one side but
  * not the other.
+ *
+ * - `tone="neutral"` (default): gray hatch. Used on source side for target-only rows.
+ * - `tone="warning"`: amber hatch. Used on target side for source-only rows —
+ *   visually matches the amber "drift" tint since the item will need to be created
+ *   on target if the user chooses to migrate.
  */
-function GhostSlot() {
+function GhostSlot({ tone = 'neutral' }: { tone?: 'neutral' | 'warning' }) {
+  const isWarning = tone === 'warning';
+  const borderClass = isWarning ? 'border-amber-500/60' : 'border-muted-foreground/50';
+  const hatchColor = isWarning ? 'rgba(245,158,11,0.2)' : 'rgba(127,127,127,0.15)';
+  const label = isWarning ? 'not present on target' : 'not present';
   return (
     <div
-      className="inline-block border border-dashed border-muted-foreground/50 rounded-sm h-4 w-20"
+      className={cn('inline-block border border-dashed rounded-sm h-4 w-20', borderClass)}
       style={{
-        backgroundImage:
-          'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(127,127,127,0.15) 3px, rgba(127,127,127,0.15) 6px)',
+        backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 3px, ${hatchColor} 3px, ${hatchColor} 6px)`,
       }}
       role="img"
-      aria-label="not present"
-      title="not present"
+      aria-label={label}
+      title={label}
     />
   );
 }
