@@ -197,13 +197,13 @@ export async function fetchItemFields(
   contextId: string,
   itemPath: string,
   options?: { includeStandard?: boolean },
-): Promise<{ itemId: string; name: string; path: string; templateId: string; templateName: string; fields: Record<string, string> }> {
+): Promise<{ itemId: string; name: string; path: string; templateName: string; fields: Record<string, string> }> {
   const excludeStandard = !options?.includeStandard;
   const query = {
     query: `query GetItemFields($path: String!) {
       item(where: { path: $path }) {
         itemId name path
-        template { templateId: itemId name }
+        template { name }
         fields(ownFields: true, excludeStandardFields: ${excludeStandard}) {
           nodes { name value }
         }
@@ -217,7 +217,13 @@ export async function fetchItemFields(
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const item = (response.data as any)?.data?.item;
+  const resData = response.data as any;
+  const errors = resData?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    throw new Error(`GraphQL error fetching fields for ${itemPath}: ${errors.map((e: { message?: string }) => e?.message ?? 'unknown').join('; ')}`);
+  }
+
+  const item = resData?.data?.item;
   if (!item) throw new Error(`Item not found: ${itemPath}`);
 
   const fields: Record<string, string> = {};
@@ -229,7 +235,6 @@ export async function fetchItemFields(
     itemId: item.itemId,
     name: item.name,
     path: item.path,
-    templateId: item.template?.templateId ?? '',
     templateName: item.template?.name ?? '',
     fields,
   };

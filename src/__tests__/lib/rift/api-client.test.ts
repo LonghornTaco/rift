@@ -358,7 +358,7 @@ describe('fetchItemFields', () => {
         data: {
           item: {
             itemId: 'i', name: 'n', path: '/p',
-            template: { templateId: 't', name: 'T' },
+            template: { name: 'T' },
             fields: { nodes: [{ name: 'Title', value: 'Home' }] },
           },
         },
@@ -371,6 +371,18 @@ describe('fetchItemFields', () => {
     const call = mutate.mock.calls[0][1];
     expect(call.params.body.query).toContain('excludeStandardFields: true');
     expect(call.params.body.query).toContain('ownFields: true');
+    expect(call.params.body.query).not.toContain('templateId');
+  });
+
+  it('throws when GraphQL response contains errors', async () => {
+    const mutate = vi.fn().mockResolvedValue({
+      data: {
+        errors: [{ message: 'The field `itemId` does not exist on the type `ItemTemplate`.' }],
+      },
+    });
+    const client = { mutate, query: vi.fn() } as unknown as ClientSDK;
+
+    await expect(fetchItemFields(client, 'ctx', '/p')).rejects.toThrow(/GraphQL error/);
   });
 
   it('uses excludeStandardFields=false when includeStandard is true', async () => {
@@ -379,7 +391,7 @@ describe('fetchItemFields', () => {
         data: {
           item: {
             itemId: 'i', name: 'n', path: '/p',
-            template: { templateId: 't', name: 'T' },
+            template: { name: 'T' },
             fields: { nodes: [] },
           },
         },
