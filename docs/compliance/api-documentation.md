@@ -218,7 +218,4 @@ The `scope` parameter used when specifying migration paths maps to Sitecore cont
 | Scope Value | Description |
 |-------------|-------------|
 | `SingleItem` | The selected item only |
-| `ItemAndChildren` | The item and its direct children |
 | `ItemAndDescendants` | The item and all descendants (recursive) |
-| `ChildrenOnly` | Direct children only, not the item itself |
-| `DescendantsOnly` | All descendants only, not the item itself |
