@@ -163,7 +163,11 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   }, []);
 
   const handleCompareItemClick = useCallback((node: DualTreeNode) => {
-    setCompareTarget((prev) => (prev?.path === node.path ? null : node));
+    setCompareTarget((prev) => {
+      if (prev?.path === node.path) return null;
+      setComparePercent(35);
+      return node;
+    });
   }, []);
 
   const handleCompareClose = useCallback(() => {
@@ -178,7 +182,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     const onMouseMove = (moveEvent: MouseEvent) => {
       const rect = container.getBoundingClientRect();
       const y = moveEvent.clientY - rect.top;
-      const pct = Math.min(80, Math.max(0, 100 - (y / rect.height) * 100));
+      const pct = Math.min(80, Math.max(3, 100 - (y / rect.height) * 100));
       setComparePercent(pct);
       if (pct < 3) setCompareTarget(null);
     };
@@ -306,16 +310,16 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
   // Close compare panel when target env deselected (only if the open compare uses target data).
   useEffect(() => {
-    if (!selectedTargetEnvId && compareTarget?.target) {
-      setCompareTarget(null);
+    if (!selectedTargetEnvId) {
+      setCompareTarget((prev) => (prev?.target ? null : prev));
     }
-  }, [selectedTargetEnvId, compareTarget]);
+  }, [selectedTargetEnvId]);
 
   // Close compare panel when the tree is refreshed or when source env / site changes.
   useEffect(() => {
     setCompareTarget(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [treeRefreshKey, selectedSourceEnvId, selectedSiteRootPath]);
+  }, [treeRefreshKey, selectedSourceEnvId, selectedSiteRootPath, selectedTargetEnvId]);
 
   // Close compare panel when a preset is loaded.
   useEffect(() => {
