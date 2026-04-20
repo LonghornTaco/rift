@@ -258,6 +258,7 @@ export function RiftContentTree({
 
   const prefetchQueueRef = useRef<string[]>([]);
   const prefetchActiveRef = useRef(0);
+  const prefetchGenRef = useRef(0);
   const MAX_PREFETCH_CONCURRENT = 2;
 
   // The two top-level nodes: "content" and "media library" from /sitecore
@@ -278,9 +279,11 @@ export function RiftContentTree({
       const path = prefetchQueueRef.current.shift();
       if (!path || childrenCacheRef.current.has(path)) continue;
 
+      const gen = prefetchGenRef.current;
       prefetchActiveRef.current++;
       try {
         const children = await fetchDualTreeChildren(client, contextId, targetContextId, path);
+        if (prefetchGenRef.current !== gen) return; // stale — drop
         setChildrenCache((prev) => {
           if (prev.has(path)) return prev;
           const next = new Map(prev);
@@ -375,6 +378,7 @@ export function RiftContentTree({
 
       prefetchQueueRef.current = [];
       prefetchActiveRef.current = 0;
+      prefetchGenRef.current++; // invalidate any in-flight prefetches
 
       try {
         const sitecoreChildren = await fetchDualTreeChildren(
@@ -668,7 +672,7 @@ export function RiftContentTree({
       <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
         <span className="w-4 shrink-0" />
         <div className="flex-1">Source</div>
-        <div className="w-px" />
+        <div className="w-px h-4 bg-border/50" />
         <div className="flex-1">Target</div>
       </div>
 

@@ -15,7 +15,7 @@ import {
   TransferPhase,
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
-import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
+import { fetchSites } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
