@@ -2,21 +2,21 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
-import { TreeNode, MigrationPath } from '@/lib/rift/types';
-import { fetchTreeChildren } from '@/lib/rift/api-client';
+import { TreeNode, MigrationPath, DualTreeNode } from '@/lib/rift/types';
+import { fetchDualTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 
 import { cn } from '@/lib/utils';
 
 interface TreeNodeRowProps {
-  node: TreeNode;
+  node: DualTreeNode;
   depth: number;
   expandedNodes: Set<string>;
   loadingNodes: Set<string>;
   selectedPathSet: Set<string>;
   inheritedPaths: Set<string>;
-  childrenCache: Map<string, TreeNode[]>;
-  onExpand: (node: TreeNode) => void;
+  childrenCache: Map<string, DualTreeNode[]>;
+  onExpand: (node: DualTreeNode) => void;
   onTogglePath: (node: TreeNode) => void;
   showHiddenItems: boolean;
   /** Paths that should have disabled checkboxes (content tree ancestors) */
@@ -39,8 +39,8 @@ function TreeNodeRow({
   disabledAncestorPaths,
   visibleChildPaths,
 }: TreeNodeRowProps) {
-  const isExpanded = expandedNodes.has(node.itemId);
-  const isLoading = loadingNodes.has(node.itemId);
+  const isExpanded = expandedNodes.has(node.path);
+  const isLoading = loadingNodes.has(node.path);
   const isSelected = selectedPathSet.has(node.path);
   const isInherited = inheritedPaths.has(node.path);
   const isAncestorDisabled = disabledAncestorPaths?.has(node.path) ?? false;
@@ -50,6 +50,8 @@ function TreeNodeRow({
   if (visibleChildPaths) {
     children = children.filter((c) => visibleChildPaths.has(c.path));
   }
+
+  const sourceNode = node.source;
 
   return (
     <>
@@ -77,11 +79,11 @@ function TreeNodeRow({
         {/* Checkbox */}
         <Checkbox
           checked={isSelected || isInherited}
-          onCheckedChange={() => onTogglePath(node)}
-          disabled={isInherited || isAncestorDisabled}
+          onCheckedChange={() => sourceNode && onTogglePath(sourceNode)}
+          disabled={isInherited || isAncestorDisabled || !sourceNode}
           className={cn(
             'shrink-0',
-            (isInherited || isAncestorDisabled) && 'opacity-50 pointer-events-none'
+            (isInherited || isAncestorDisabled || !sourceNode) && 'opacity-50 pointer-events-none'
           )}
         />
 
@@ -105,7 +107,7 @@ function TreeNodeRow({
       {isExpanded &&
         children.map((child) => (
           <TreeNodeRow
-            key={child.itemId}
+            key={child.path}
             node={child}
             depth={depth + 1}
             expandedNodes={expandedNodes}
@@ -149,7 +151,7 @@ export function RiftContentTree({
   refreshKey,
 }: RiftContentTreeProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [childrenCache, setChildrenCache] = useState<Map<string, TreeNode[]>>(new Map());
+  const [childrenCache, setChildrenCache] = useState<Map<string, DualTreeNode[]>>(new Map());
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -159,8 +161,8 @@ export function RiftContentTree({
   const MAX_PREFETCH_CONCURRENT = 2;
 
   // The two top-level nodes: "content" and "media library" from /sitecore
-  const [contentNode, setContentNode] = useState<TreeNode | null>(null);
-  const [mediaLibraryNode, setMediaLibraryNode] = useState<TreeNode | null>(null);
+  const [contentNode, setContentNode] = useState<DualTreeNode | null>(null);
+  const [mediaLibraryNode, setMediaLibraryNode] = useState<DualTreeNode | null>(null);
 
   const childrenCacheRef = useRef(childrenCache);
   childrenCacheRef.current = childrenCache;
@@ -178,14 +180,16 @@ export function RiftContentTree({
 
       prefetchActiveRef.current++;
       try {
-        const children = await fetchTreeChildren(client, contextId, path);
+        const children = await fetchDualTreeChildren(client, contextId, targetContextId, path);
         setChildrenCache((prev) => {
           if (prev.has(path)) return prev;
           const next = new Map(prev);
           next.set(path, children);
           return next;
         });
-        onChildrenLoadedRef.current?.(path, children);
+        // onChildrenLoaded still emits the source-side TreeNode[] for selection math.
+        const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
+        onChildrenLoadedRef.current?.(path, sourceOnly);
       } catch {
         // Silent — prefetch failures are not user-facing
       } finally {
@@ -193,9 +197,9 @@ export function RiftContentTree({
         processPrefetchQueue();
       }
     }
-  }, [client, contextId]);
+  }, [client, contextId, targetContextId]);
 
-  const enqueuePrefetch = useCallback((children: TreeNode[]) => {
+  const enqueuePrefetch = useCallback((children: DualTreeNode[]) => {
     const toFetch = children
       .filter((c) => c.hasChildren && !childrenCacheRef.current.has(c.path))
       .map((c) => c.path);
@@ -273,65 +277,68 @@ export function RiftContentTree({
       prefetchActiveRef.current = 0;
 
       try {
-        const sitecoreChildren = await fetchTreeChildren(client, contextId, '/sitecore');
+        const sitecoreChildren = await fetchDualTreeChildren(
+          client, contextId, targetContextId, '/sitecore'
+        );
         if (cancelled) return;
 
-        const contentN = sitecoreChildren.find((n) => n.name === 'content');
+        const contentN = sitecoreChildren.find((n) => n.name === 'content') ?? null;
         const mediaLibN = sitecoreChildren.find(
           (n) => n.name.toLowerCase() === 'media library'
-        );
+        ) ?? null;
 
-        if (contentN) setContentNode(contentN);
-        if (mediaLibN) setMediaLibraryNode(mediaLibN);
+        setContentNode(contentN);
+        setMediaLibraryNode(mediaLibN);
 
-        const newCache = new Map<string, TreeNode[]>();
-        const expandIds = new Set<string>();
+        const newCache = new Map<string, DualTreeNode[]>();
+        const expandPaths = new Set<string>();
+
+        const emitChildrenLoaded = (path: string, dual: DualTreeNode[]) => {
+          const sourceOnly = dual.map((d) => d.source).filter((n): n is TreeNode => !!n);
+          onChildrenLoadedRef.current?.(path, sourceOnly);
+        };
 
         if (contentN) {
-          expandIds.add(contentN.itemId);
+          expandPaths.add(contentN.path);
           let currentPath = contentN.path;
 
           for (const seg of pathInfo.segments) {
             if (cancelled) return;
-            const children = await fetchTreeChildren(client, contextId, currentPath);
+            const children = await fetchDualTreeChildren(client, contextId, targetContextId, currentPath);
             newCache.set(currentPath, children);
-            onChildrenLoadedRef.current?.(currentPath, children);
+            emitChildrenLoaded(currentPath, children);
 
             const match = children.find((c) => c.name === seg);
             if (!match) {
               console.warn(`[Rift] Content path segment "${seg}" not found under ${currentPath}`);
               break;
             }
-            expandIds.add(match.itemId);
+            expandPaths.add(match.path);
             currentPath = match.path;
           }
 
           if (cancelled) return;
           try {
-            const siteChildren = await fetchTreeChildren(client, contextId, currentPath);
+            const siteChildren = await fetchDualTreeChildren(client, contextId, targetContextId, currentPath);
             newCache.set(currentPath, siteChildren);
-            onChildrenLoadedRef.current?.(currentPath, siteChildren);
+            emitChildrenLoaded(currentPath, siteChildren);
 
-            // Queue prefetch for site children's children
-            const childrenToPreload = siteChildren.filter((c) => c.hasChildren);
-            for (const child of childrenToPreload) {
-              if (!newCache.has(child.path)) {
-                prefetchQueueRef.current.push(child.path);
-              }
+            for (const child of siteChildren.filter((c) => c.hasChildren)) {
+              if (!newCache.has(child.path)) prefetchQueueRef.current.push(child.path);
             }
           } catch {}
         }
 
         if (mediaLibN) {
-          expandIds.add(mediaLibN.itemId);
+          expandPaths.add(mediaLibN.path);
           const mediaSegments = ['Project', ...pathInfo.segments];
           let currentPath = mediaLibN.path;
 
           for (const seg of mediaSegments) {
             if (cancelled) return;
-            const children = await fetchTreeChildren(client, contextId, currentPath);
+            const children = await fetchDualTreeChildren(client, contextId, targetContextId, currentPath);
             newCache.set(currentPath, children);
-            onChildrenLoadedRef.current?.(currentPath, children);
+            emitChildrenLoaded(currentPath, children);
 
             const match = children.find((c) => c.name === seg);
             if (!match) {
@@ -341,15 +348,15 @@ export function RiftContentTree({
             currentPath = match.path;
             // Expand intermediate nodes but not the final media folder
             if (seg !== mediaSegments[mediaSegments.length - 1]) {
-              expandIds.add(match.itemId);
+              expandPaths.add(match.path);
             }
           }
 
           if (cancelled) return;
           try {
-            const siteMediaChildren = await fetchTreeChildren(client, contextId, currentPath);
+            const siteMediaChildren = await fetchDualTreeChildren(client, contextId, targetContextId, currentPath);
             newCache.set(currentPath, siteMediaChildren);
-            onChildrenLoadedRef.current?.(currentPath, siteMediaChildren);
+            emitChildrenLoaded(currentPath, siteMediaChildren);
           } catch {}
         }
 
@@ -360,7 +367,7 @@ export function RiftContentTree({
           for (const [k, v] of newCache) next.set(k, v);
           return next;
         });
-        setExpandedNodes(expandIds);
+        setExpandedNodes(expandPaths);
         setIsLoading(false);
         processPrefetchQueue();
       } catch (err) {
@@ -374,11 +381,11 @@ export function RiftContentTree({
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootPath, refreshKey, targetContextId]);
 
   const getVisibleChildPaths = useCallback(
-    (node: TreeNode, isMedia: boolean): Set<string> | undefined => {
+    (node: DualTreeNode, isMedia: boolean): Set<string> | undefined => {
       if (!pathInfo) return undefined;
 
       if (isMedia) {
@@ -411,41 +418,42 @@ export function RiftContentTree({
   );
 
   const handleExpand = useCallback(
-    async (node: TreeNode) => {
-      const nodeId = node.itemId;
+    async (node: DualTreeNode) => {
+      const key = node.path;
 
       let wasExpanded = false;
       setExpandedNodes((prev) => {
-        if (prev.has(nodeId)) {
+        if (prev.has(key)) {
           wasExpanded = true;
           const next = new Set(prev);
-          next.delete(nodeId);
+          next.delete(key);
           return next;
         }
-        return new Set(prev).add(nodeId);
+        return new Set(prev).add(key);
       });
 
       if (wasExpanded) return;
 
       if (!childrenCacheRef.current.has(node.path)) {
-        setLoadingNodes((prev) => new Set(prev).add(nodeId));
+        setLoadingNodes((prev) => new Set(prev).add(key));
         try {
-          const children = await fetchTreeChildren(client, contextId, node.path);
+          const children = await fetchDualTreeChildren(client, contextId, targetContextId, node.path);
           setChildrenCache((prev) => new Map(prev).set(node.path, children));
-          onChildrenLoadedRef.current?.(node.path, children);
+          const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
+          onChildrenLoadedRef.current?.(node.path, sourceOnly);
           enqueuePrefetch(children);
         } catch {
           // Silently handle
         } finally {
           setLoadingNodes((prev) => {
             const next = new Set(prev);
-            next.delete(nodeId);
+            next.delete(key);
             return next;
           });
         }
       }
     },
-    [enqueuePrefetch]
+    [enqueuePrefetch, client, contextId, targetContextId],
   );
 
   const baseTreeRowProps = {
@@ -461,13 +469,13 @@ export function RiftContentTree({
   };
 
   // Render a branch of the tree with per-level filtering
-  const renderFilteredBranch = (node: TreeNode, depth: number, isMedia: boolean) => {
-    const isExpanded = expandedNodes.has(node.itemId);
-    const isLoadingNode = loadingNodes.has(node.itemId);
+  const renderFilteredBranch = (node: DualTreeNode, depth: number, isMedia: boolean) => {
+    const isExpanded = expandedNodes.has(node.path);
+    const isLoadingNode = loadingNodes.has(node.path);
     const isSelected = selectedPathSet.has(node.path);
     const isInherited = inheritedPaths.has(node.path);
     // Content tree ancestors (up to and including site root) have disabled checkboxes
-    const isAncestorDisabled = !isMedia && pathInfo?.contentAncestorPaths.has(node.path);
+    const isAncestorDisabled = !isMedia && (pathInfo?.contentAncestorPaths.has(node.path) ?? false);
     let children = childrenCache.get(node.path) ?? [];
 
     const visiblePaths = getVisibleChildPaths(node, isMedia);
@@ -475,8 +483,10 @@ export function RiftContentTree({
       children = children.filter((c) => visiblePaths.has(c.path));
     }
 
+    const sourceNode = node.source;
+
     return (
-      <div key={node.itemId}>
+      <div key={node.path}>
         <div
           className="flex items-center gap-1 leading-8 text-sm"
           style={{ paddingLeft: depth * 20 }}
@@ -498,11 +508,11 @@ export function RiftContentTree({
 
           <Checkbox
             checked={isSelected || isInherited}
-            onCheckedChange={() => onTogglePath(node)}
-            disabled={isInherited || isAncestorDisabled}
+            onCheckedChange={() => sourceNode && onTogglePath(sourceNode)}
+            disabled={isInherited || isAncestorDisabled || !sourceNode}
             className={cn(
               'shrink-0',
-              (isInherited || isAncestorDisabled) && 'opacity-50 pointer-events-none'
+              (isInherited || isAncestorDisabled || !sourceNode) && 'opacity-50 pointer-events-none'
             )}
           />
 
@@ -528,7 +538,7 @@ export function RiftContentTree({
             }
             return (
               <TreeNodeRow
-                key={child.itemId}
+                key={child.path}
                 node={child}
                 depth={depth + 1}
                 {...baseTreeRowProps}
