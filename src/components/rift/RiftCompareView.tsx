@@ -41,6 +41,7 @@ export function RiftCompareView({
     setLoadingStandard(false);
     setError(null);
     setSideErrors({});
+    setShowAllFields(false);
     setShowStandardFields(false);
   }, [nodePath]);
 

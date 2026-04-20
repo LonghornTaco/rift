@@ -182,9 +182,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     const onMouseMove = (moveEvent: MouseEvent) => {
       const rect = container.getBoundingClientRect();
       const y = moveEvent.clientY - rect.top;
-      const pct = Math.min(80, Math.max(3, 100 - (y / rect.height) * 100));
+      const pct = Math.min(80, Math.max(0, 100 - (y / rect.height) * 100));
       setComparePercent(pct);
-      if (pct < 3) setCompareTarget(null);
+      if (pct < 5) setCompareTarget(null);
     };
 
     const onMouseUp = () => {
@@ -307,13 +307,6 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       }
     }
   }, [loadedPreset?.siteRootPath, sites, isLoadingSites]);
-
-  // Close compare panel when target env deselected (only if the open compare uses target data).
-  useEffect(() => {
-    if (!selectedTargetEnvId) {
-      setCompareTarget((prev) => (prev?.target ? null : prev));
-    }
-  }, [selectedTargetEnvId]);
 
   // Close compare panel when the tree is refreshed or when source env / site changes.
   useEffect(() => {
