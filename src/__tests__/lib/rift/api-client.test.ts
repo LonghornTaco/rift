@@ -198,6 +198,14 @@ describe('zipDualTreeChildren diff computation', () => {
     expect(result[0].diff).toBeUndefined();
     expect(result[0].source).toBeUndefined();
   });
+
+  it('leaves diff undefined when either updated is an empty string', () => {
+    const source = [nodeWithUpdated('/a/Home', '')];
+    const target = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+
+    const result = zipDualTreeChildren(source, target);
+    expect(result[0].diff).toBeUndefined();
+  });
 });
 
 function mockClientWithResponses(responses: unknown[]): ClientSDK {
@@ -215,7 +223,9 @@ function rejectingMutateAtIndex(responses: unknown[], rejectIndex: number, error
   return { mutate, query: vi.fn() } as unknown as ClientSDK;
 }
 
-function treeResponse(children: { itemId: string; name: string; path: string; hasChildren?: boolean }[]) {
+function treeResponse(
+  children: { itemId: string; name: string; path: string; hasChildren?: boolean; updated?: string }[],
+) {
   return {
     item: {
       children: {
@@ -225,6 +235,7 @@ function treeResponse(children: { itemId: string; name: string; path: string; ha
           path: c.path,
           hasChildren: c.hasChildren ?? false,
           template: { name: 'Page' },
+          updated: c.updated ? { value: c.updated } : null,
         })),
       },
     },
@@ -250,6 +261,27 @@ describe('fetchDualTreeChildren', () => {
     expect(result[0].target?.itemId).toBe('tgt-home');
     expect(result[1].source?.itemId).toBe('src-about');
     expect(result[1].target).toBeUndefined();
+  });
+
+  it('propagates diff state from __Updated timestamps through to DualTreeNode', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([
+        { itemId: 'src-home', name: 'Home', path: '/site/Home', updated: '20260419T120000Z' },
+        { itemId: 'src-about', name: 'About', path: '/site/About', updated: '20260419T120000Z' },
+      ]),
+      treeResponse([
+        { itemId: 'tgt-home', name: 'Home', path: '/site/Home', updated: '20260419T120000Z' },
+        { itemId: 'tgt-about', name: 'About', path: '/site/About', updated: '20260420T090000Z' },
+      ]),
+    ]);
+
+    const result = await fetchDualTreeChildren(client, 'src-ctx', 'tgt-ctx', '/site');
+
+    expect(result).toHaveLength(2);
+    expect(result[0].path).toBe('/site/Home');
+    expect(result[0].diff).toBe('match');
+    expect(result[1].path).toBe('/site/About');
+    expect(result[1].diff).toBe('different');
   });
 
   it('skips the target fetch when targetContextId is null', async () => {
