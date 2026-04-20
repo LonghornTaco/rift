@@ -203,9 +203,6 @@ function TreeNodeRow({
           />
         </div>
 
-        {/* Divider */}
-        <div className="w-px h-8 bg-muted-foreground/50 shrink-0" />
-
         {/* Target half */}
         <div className="flex-1 min-w-0">
           <TargetCell node={node} targetContextId={targetContextId} />
@@ -628,8 +625,6 @@ export function RiftContentTree({
             />
           </div>
 
-          <div className="w-px h-8 bg-muted-foreground/50 shrink-0" />
-
           <div className="flex-1 min-w-0">
             <TargetCell node={node} targetContextId={targetContextId} />
           </div>
@@ -655,7 +650,14 @@ export function RiftContentTree({
   };
 
   return (
-    <div>
+    <div className="relative min-h-full">
+      {/* Continuous column divider between Source and Target */}
+      <div
+        className="absolute top-0 bottom-0 w-px bg-muted-foreground/50 pointer-events-none"
+        style={{ left: 'calc(50% + 12px)' }}
+        aria-hidden="true"
+      />
+
       <div className="flex justify-between items-center mb-3">
         <div className="text-xs font-semibold text-muted-foreground">
           CONTENT TREE
@@ -679,7 +681,6 @@ export function RiftContentTree({
       <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
         <span className="w-4 shrink-0" />
         <div className="flex-1">Source</div>
-        <div className="w-px h-4 bg-muted-foreground/50" />
         <div className="flex-1">Target</div>
       </div>
 
