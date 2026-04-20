@@ -34,6 +34,18 @@ export interface TreeNode {
   isExpanded?: boolean;
 }
 
+/**
+ * A paired tree node representing the same logical item across source and target envs.
+ * Identity key is `path`. Either side may be undefined when the item exists on only one side.
+ */
+export interface DualTreeNode {
+  path: string;
+  name: string;
+  hasChildren: boolean;
+  source?: TreeNode;
+  target?: TreeNode;
+}
+
 export interface SiteInfo {
   name: string;
   rootPath: string;
