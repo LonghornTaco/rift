@@ -9,6 +9,12 @@ import { Folder, File } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+function getFolderIconClasses(diff: DualTreeNode['diff']): string {
+  if (diff === 'match') return 'fill-emerald-500/30 stroke-emerald-500';
+  if (diff === 'different') return 'fill-amber-500/30 stroke-amber-500';
+  return '';
+}
+
 /**
  * Renders the left half of a dual-tree row. Shows checkbox + icon + name when the item
  * exists on source; a ghost slot (dashed hatched) when it does not.
@@ -59,7 +65,11 @@ function SourceCell({
         )}
       >
         <Icon
-          className={cn('w-4 h-4 shrink-0 text-muted-foreground', isAncestorDisabled && 'opacity-40')}
+          className={cn(
+            'w-4 h-4 shrink-0 text-muted-foreground',
+            getFolderIconClasses(node.diff),
+            isAncestorDisabled && 'opacity-40',
+          )}
           aria-hidden="true"
         />
         <span
@@ -116,7 +126,10 @@ function TargetCell({ node, targetContextId, onCompareItem, isCompareTarget }: T
       )}
       title={node.diff === 'different' ? 'Target differs from source' : undefined}
     >
-      <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <Icon
+        className={cn('w-4 h-4 shrink-0', getFolderIconClasses(node.diff))}
+        aria-hidden="true"
+      />
       <span className="truncate">{node.target.name}</span>
     </button>
   );
