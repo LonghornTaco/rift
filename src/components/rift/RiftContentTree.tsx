@@ -5,6 +5,7 @@ import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import { TreeNode, MigrationPath, DualTreeNode } from '@/lib/rift/types';
 import { fetchDualTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Folder, File } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -84,21 +85,16 @@ function TargetCell({ node, targetContextId }: TargetCellProps) {
     return <GhostSlot />;
   }
 
+  const tint = node.diff === 'different' ? 'text-amber-500' : 'text-muted-foreground';
+  const Icon = node.hasChildren ? Folder : File;
+
   return (
-    <div className="flex items-center gap-1 min-w-0">
-      {node.diff === 'different' && (
-        <span
-          className="text-amber-500 shrink-0 text-[10px] leading-none"
-          aria-label="differs from source"
-          title="Target differs from source"
-        >
-          {'\u25CF'}
-        </span>
-      )}
-      <span className="text-muted-foreground shrink-0">
-        {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
-      </span>
-      <span className="truncate text-foreground">{node.target.name}</span>
+    <div
+      className={cn('flex items-center gap-1 min-w-0', tint)}
+      title={node.diff === 'different' ? 'Target differs from source' : undefined}
+    >
+      <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+      <span className="truncate">{node.target.name}</span>
     </div>
   );
 }
