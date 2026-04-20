@@ -30,6 +30,7 @@ export interface TreeNode {
   path: string;
   hasChildren: boolean;
   templateName: string;
+  updated?: string;
   children?: TreeNode[];
   isExpanded?: boolean;
 }
@@ -44,6 +45,7 @@ export interface DualTreeNode {
   hasChildren: boolean;
   source?: TreeNode;
   target?: TreeNode;
+  diff?: 'match' | 'different';
 }
 
 export interface SiteInfo {
