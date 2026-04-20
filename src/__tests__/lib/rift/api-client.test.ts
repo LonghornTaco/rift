@@ -179,6 +179,8 @@ describe('fetchDualTreeChildren', () => {
   });
 
   it('returns source-only pairs when the target fetch rejects', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
     const client = rejectingMutateAtIndex(
       [
         treeResponse([{ itemId: 'src-home', name: 'Home', path: '/site/Home' }]),
@@ -193,6 +195,12 @@ describe('fetchDualTreeChildren', () => {
     expect(result).toHaveLength(1);
     expect(result[0].source).toBeDefined();
     expect(result[0].target).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[Rift] Target tree fetch failed for /site:',
+      expect.any(Error),
+    );
+
+    warnSpy.mockRestore();
   });
 
   it('propagates the source-side error when the source fetch rejects', async () => {
