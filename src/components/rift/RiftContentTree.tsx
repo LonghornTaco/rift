@@ -204,7 +204,7 @@ function TreeNodeRow({
         </div>
 
         {/* Divider */}
-        <div className="w-px h-6 bg-muted-foreground/20 shrink-0" />
+        <div className="w-px h-8 bg-muted-foreground/50 shrink-0" />
 
         {/* Target half */}
         <div className="flex-1 min-w-0">
@@ -628,7 +628,7 @@ export function RiftContentTree({
             />
           </div>
 
-          <div className="w-px h-6 bg-muted-foreground/20 shrink-0" />
+          <div className="w-px h-8 bg-muted-foreground/50 shrink-0" />
 
           <div className="flex-1 min-w-0">
             <TargetCell node={node} targetContextId={targetContextId} />
@@ -679,7 +679,7 @@ export function RiftContentTree({
       <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
         <span className="w-4 shrink-0" />
         <div className="flex-1">Source</div>
-        <div className="w-px h-4 bg-muted-foreground/20" />
+        <div className="w-px h-4 bg-muted-foreground/50" />
         <div className="flex-1">Target</div>
       </div>
 
