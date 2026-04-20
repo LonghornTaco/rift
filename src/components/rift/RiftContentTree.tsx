@@ -106,6 +106,7 @@ function GhostSlot() {
         backgroundImage:
           'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(127,127,127,0.15) 3px, rgba(127,127,127,0.15) 6px)',
       }}
+      role="img"
       aria-label="not present"
       title="not present"
     />
@@ -165,21 +166,22 @@ function TreeNodeRow({
         className="flex items-center gap-2 leading-8 text-sm"
         style={{ paddingLeft: depth * 20 }}
       >
-        {/* Shared expand arrow */}
-        {node.hasChildren ? (
-          <span
-            onClick={() => onExpand(node)}
-            className="cursor-pointer text-muted-foreground w-4 text-center shrink-0 select-none"
-          >
-            {isExpanded ? '\u25BC' : '\u25B6'}
-          </span>
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
-
-        {isLoading && (
-          <span className="text-muted-foreground text-xs shrink-0">...</span>
-        )}
+        {/* Shared expand arrow with loading spinner overlay */}
+        <span className="w-4 shrink-0 relative text-center">
+          {node.hasChildren ? (
+            <span
+              onClick={() => onExpand(node)}
+              className="cursor-pointer text-muted-foreground select-none"
+            >
+              {isExpanded ? '\u25BC' : '\u25B6'}
+            </span>
+          ) : null}
+          {isLoading && (
+            <span className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-background">
+              ...
+            </span>
+          )}
+        </span>
 
         {/* Source half */}
         <div className="flex-1 min-w-0">
@@ -588,20 +590,22 @@ export function RiftContentTree({
           className="flex items-center gap-2 leading-8 text-sm"
           style={{ paddingLeft: depth * 20 }}
         >
-          {node.hasChildren ? (
-            <span
-              onClick={() => handleExpand(node)}
-              className="cursor-pointer text-muted-foreground w-4 text-center shrink-0 select-none"
-            >
-              {isExpanded ? '\u25BC' : '\u25B6'}
-            </span>
-          ) : (
-            <span className="w-4 shrink-0" />
-          )}
-
-          {isLoadingNode && (
-            <span className="text-muted-foreground text-xs shrink-0">...</span>
-          )}
+          {/* Shared expand arrow with loading spinner overlay */}
+          <span className="w-4 shrink-0 relative text-center">
+            {node.hasChildren ? (
+              <span
+                onClick={() => handleExpand(node)}
+                className="cursor-pointer text-muted-foreground select-none"
+              >
+                {isExpanded ? '\u25BC' : '\u25B6'}
+              </span>
+            ) : null}
+            {isLoadingNode && (
+              <span className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-background">
+                ...
+              </span>
+            )}
+          </span>
 
           <div className="flex-1 min-w-0">
             <SourceCell
