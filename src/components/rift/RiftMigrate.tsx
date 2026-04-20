@@ -13,11 +13,13 @@ import {
   DEFAULT_SETTINGS,
   TransferProgress,
   TransferPhase,
+  DualTreeNode,
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
 import { fetchSites } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import { RiftContentTree } from './RiftContentTree';
+import { RiftCompareView } from './RiftCompareView';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
 import { RiftConfirmDialog } from './RiftConfirmDialog';
 import { RiftProgressOverlay } from './RiftProgressOverlay';
@@ -91,6 +93,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   const [splitPercent, setSplitPercent] = useState(60);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const splitterContainerRef = useRef<HTMLDivElement>(null);
+  const [compareTarget, setCompareTarget] = useState<DualTreeNode | null>(null);
+  const [comparePercent, setComparePercent] = useState(35);
+  const compareColumnRef = useRef<HTMLDivElement>(null);
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [overwritePresetId, setOverwritePresetId] = useState<string | null>(null);
@@ -142,6 +147,40 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       const y = moveEvent.clientY - rect.top;
       const pct = Math.min(80, Math.max(20, (y / rect.height) * 100));
       setSplitPercent(pct);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  const handleCompareItemClick = useCallback((node: DualTreeNode) => {
+    setCompareTarget((prev) => (prev?.path === node.path ? null : node));
+  }, []);
+
+  const handleCompareClose = useCallback(() => {
+    setCompareTarget(null);
+  }, []);
+
+  const handleCompareSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = compareColumnRef.current;
+    if (!container) return;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const y = moveEvent.clientY - rect.top;
+      const pct = Math.min(80, Math.max(0, 100 - (y / rect.height) * 100));
+      setComparePercent(pct);
+      if (pct < 3) setCompareTarget(null);
     };
 
     const onMouseUp = () => {
@@ -264,6 +303,24 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       }
     }
   }, [loadedPreset?.siteRootPath, sites, isLoadingSites]);
+
+  // Close compare panel when target env deselected (only if the open compare uses target data).
+  useEffect(() => {
+    if (!selectedTargetEnvId && compareTarget?.target) {
+      setCompareTarget(null);
+    }
+  }, [selectedTargetEnvId, compareTarget]);
+
+  // Close compare panel when the tree is refreshed or when source env / site changes.
+  useEffect(() => {
+    setCompareTarget(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeRefreshKey, selectedSourceEnvId, selectedSiteRootPath]);
+
+  // Close compare panel when a preset is loaded.
+  useEffect(() => {
+    if (loadedPreset) setCompareTarget(null);
+  }, [loadedPreset]);
 
   const targetEnvironments = environments.filter(
     (e) => e.tenantId !== selectedSourceEnvId
@@ -621,30 +678,56 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
           }}
         >
           {/* Left panel — content tree */}
-          <div className="flex-1 border-r border-border p-4 overflow-y-auto">
-            {selectedSourceEnvId && selectedSiteRootPath ? (
-              <RiftContentTree
-                client={client}
-                contextId={environments.find((e) => e.tenantId === selectedSourceEnvId)!.contextId}
-                targetContextId={
-                  selectedTargetEnvId
-                    ? environments.find((e) => e.tenantId === selectedTargetEnvId)?.contextId ?? null
-                    : null
-                }
-                rootPath={selectedSiteRootPath}
-                selectedPaths={selectedPaths}
-                onTogglePath={handleTogglePath}
-                inheritedPaths={inheritedPaths}
-                onChildrenLoaded={handleChildrenLoaded}
-                disabled={isMigrating}
-                refreshKey={treeRefreshKey}
-                onCompareItem={() => {}}
-                compareTargetPath={null}
-              />
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                Select a site to browse the content tree
-              </div>
+          <div ref={compareColumnRef} className="flex-1 border-r border-border flex flex-col min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              {selectedSourceEnvId && selectedSiteRootPath ? (
+                <RiftContentTree
+                  client={client}
+                  contextId={environments.find((e) => e.tenantId === selectedSourceEnvId)!.contextId}
+                  targetContextId={
+                    selectedTargetEnvId
+                      ? environments.find((e) => e.tenantId === selectedTargetEnvId)?.contextId ?? null
+                      : null
+                  }
+                  rootPath={selectedSiteRootPath}
+                  selectedPaths={selectedPaths}
+                  onTogglePath={handleTogglePath}
+                  inheritedPaths={inheritedPaths}
+                  onChildrenLoaded={handleChildrenLoaded}
+                  disabled={isMigrating}
+                  refreshKey={treeRefreshKey}
+                  onCompareItem={handleCompareItemClick}
+                  compareTargetPath={compareTarget?.path ?? null}
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Select a site to browse the content tree
+                </div>
+              )}
+            </div>
+
+            {compareTarget && selectedSourceEnvId && (
+              <>
+                <div
+                  onMouseDown={handleCompareSplitterMouseDown}
+                  className="h-1.5 bg-border hover:bg-primary/40 cursor-row-resize flex items-center justify-center shrink-0 transition-colors"
+                >
+                  <div className="w-8 h-0.5 bg-muted-foreground/40 rounded-full" />
+                </div>
+                <div className="min-h-0 overflow-hidden" style={{ flex: `0 0 ${comparePercent}%` }}>
+                  <RiftCompareView
+                    client={client}
+                    sourceContextId={environments.find((e) => e.tenantId === selectedSourceEnvId)!.contextId}
+                    targetContextId={
+                      selectedTargetEnvId
+                        ? environments.find((e) => e.tenantId === selectedTargetEnvId)?.contextId ?? null
+                        : null
+                    }
+                    node={compareTarget}
+                    onClose={handleCompareClose}
+                  />
+                </div>
+              </>
             )}
           </div>
 
