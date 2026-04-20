@@ -129,6 +129,77 @@ describe('zipDualTreeChildren', () => {
   });
 });
 
+describe('zipDualTreeChildren diff computation', () => {
+  function nodeWithUpdated(path: string, updated: string | undefined): TreeNode {
+    const name = path.split('/').filter(Boolean).pop() ?? '';
+    return {
+      itemId: `id-${path}`,
+      name,
+      path,
+      hasChildren: false,
+      templateName: 'Page',
+      ...(updated !== undefined ? { updated } : {}),
+    };
+  }
+
+  it('sets diff to match when both sides have equal updated timestamps', () => {
+    const source = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+    const target = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].diff).toBe('match');
+  });
+
+  it('sets diff to different when updated timestamps differ', () => {
+    const source = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+    const target = [nodeWithUpdated('/a/Home', '20260420T090000Z')];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result[0].diff).toBe('different');
+  });
+
+  it('leaves diff undefined when only source has updated', () => {
+    const source = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+    const target = [nodeWithUpdated('/a/Home', undefined)];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result[0].diff).toBeUndefined();
+  });
+
+  it('leaves diff undefined when only target has updated', () => {
+    const source = [nodeWithUpdated('/a/Home', undefined)];
+    const target = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result[0].diff).toBeUndefined();
+  });
+
+  it('leaves diff undefined when target side is absent (source-only row)', () => {
+    const source = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+    const target: TreeNode[] = [];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result[0].diff).toBeUndefined();
+    expect(result[0].target).toBeUndefined();
+  });
+
+  it('leaves diff undefined when source side is absent (target-only row)', () => {
+    const source: TreeNode[] = [];
+    const target = [nodeWithUpdated('/a/Home', '20260419T120000Z')];
+
+    const result = zipDualTreeChildren(source, target);
+
+    expect(result[0].diff).toBeUndefined();
+    expect(result[0].source).toBeUndefined();
+  });
+});
+
 function mockClientWithResponses(responses: unknown[]): ClientSDK {
   const mutate = vi.fn();
   for (const r of responses) mutate.mockResolvedValueOnce({ data: { data: r } });

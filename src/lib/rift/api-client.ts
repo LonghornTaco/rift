@@ -9,6 +9,8 @@ import type { TreeNode, SiteInfo, DualTreeNode } from './types';
  * - `name` comes from source when present, otherwise target.
  * - `hasChildren` is true if either side reports hasChildren.
  * - When `target` is null or undefined, every pair has `target: undefined`.
+ * - `diff` is set only when both sides are present AND both have non-empty `updated` strings.
+ *   'match' when updated values are equal, 'different' otherwise. Undefined in all other cases.
  */
 export function zipDualTreeChildren(
   source: TreeNode[],
@@ -24,13 +26,17 @@ export function zipDualTreeChildren(
 
   for (const s of source) {
     const t = targetByPath.get(s.path);
-    paired.push({
+    const pair: DualTreeNode = {
       path: s.path,
       name: s.name,
       hasChildren: s.hasChildren || (t?.hasChildren ?? false),
       source: s,
       target: t,
-    });
+    };
+    if (t && s.updated && t.updated) {
+      pair.diff = s.updated === t.updated ? 'match' : 'different';
+    }
+    paired.push(pair);
     seen.add(s.path);
   }
 
