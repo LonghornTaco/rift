@@ -86,6 +86,15 @@ function TargetCell({ node, targetContextId }: TargetCellProps) {
 
   return (
     <div className="flex items-center gap-1 min-w-0">
+      {node.diff === 'different' && (
+        <span
+          className="text-amber-500 shrink-0 text-[10px] leading-none"
+          aria-label="differs from source"
+          title="Target differs from source"
+        >
+          {'\u25CF'}
+        </span>
+      )}
       <span className="text-muted-foreground shrink-0">
         {node.hasChildren ? '\uD83D\uDCC1' : '\uD83D\uDCC4'}
       </span>
