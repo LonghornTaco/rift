@@ -633,6 +633,11 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
               <RiftContentTree
                 client={client}
                 contextId={environments.find((e) => e.tenantId === selectedSourceEnvId)!.contextId}
+                targetContextId={
+                  selectedTargetEnvId
+                    ? environments.find((e) => e.tenantId === selectedTargetEnvId)?.contextId ?? null
+                    : null
+                }
                 rootPath={selectedSiteRootPath}
                 selectedPaths={selectedPaths}
                 onTogglePath={handleTogglePath}

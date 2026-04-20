@@ -126,6 +126,7 @@ function TreeNodeRow({
 interface RiftContentTreeProps {
   client: ClientSDK;
   contextId: string;
+  targetContextId: string | null;
   rootPath: string;
   selectedPaths: MigrationPath[];
   onTogglePath: (node: TreeNode) => void;
@@ -138,6 +139,7 @@ interface RiftContentTreeProps {
 export function RiftContentTree({
   client,
   contextId,
+  targetContextId,
   rootPath,
   selectedPaths,
   onTogglePath,
