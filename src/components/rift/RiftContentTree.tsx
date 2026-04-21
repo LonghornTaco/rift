@@ -250,14 +250,16 @@ function TreeNodeRow({
         </div>
 
         {/* Target half */}
-        <div className="flex-1 min-w-0">
-          <TargetCell
-            node={node}
-            targetContextId={targetContextId}
-            onCompareItem={onCompareItem}
-            isCompareTarget={compareTargetPath === node.path}
-          />
-        </div>
+        {targetContextId !== null && (
+          <div className="flex-1 min-w-0">
+            <TargetCell
+              node={node}
+              targetContextId={targetContextId}
+              onCompareItem={onCompareItem}
+              isCompareTarget={compareTargetPath === node.path}
+            />
+          </div>
+        )}
       </div>
 
       {isExpanded &&
@@ -686,14 +688,16 @@ export function RiftContentTree({
             />
           </div>
 
-          <div className="flex-1 min-w-0">
-            <TargetCell
-              node={node}
-              targetContextId={targetContextId}
-              onCompareItem={onCompareItem}
-              isCompareTarget={compareTargetPath === node.path}
-            />
-          </div>
+          {targetContextId !== null && (
+            <div className="flex-1 min-w-0">
+              <TargetCell
+                node={node}
+                targetContextId={targetContextId}
+                onCompareItem={onCompareItem}
+                isCompareTarget={compareTargetPath === node.path}
+              />
+            </div>
+          )}
         </div>
 
         {isExpanded &&
@@ -717,8 +721,8 @@ export function RiftContentTree({
 
   return (
     <div className="relative min-h-full">
-      {/* Continuous column divider between Source and Target — hidden while loading so it doesn't cut through the spinner. */}
-      {!isLoading && (
+      {/* Continuous column divider between Source and Target — hidden while loading so it doesn't cut through the spinner, and hidden until a target is selected. */}
+      {!isLoading && targetContextId !== null && (
         <div
           className="absolute top-0 bottom-0 w-px bg-border pointer-events-none"
           style={{ left: '50%' }}
@@ -749,7 +753,7 @@ export function RiftContentTree({
       <div className="flex items-center gap-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
         <span className="w-4 shrink-0" />
         <div className="flex-1">Source</div>
-        <div className="flex-1">Target</div>
+        {targetContextId !== null && <div className="flex-1">Target</div>}
       </div>
 
       {isLoading ? (
