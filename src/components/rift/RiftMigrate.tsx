@@ -96,6 +96,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   const [compareTarget, setCompareTarget] = useState<DualTreeNode | null>(null);
   const [comparePercent, setComparePercent] = useState(35);
   const compareColumnRef = useRef<HTMLDivElement>(null);
+  // Lifted so they persist across item switches and panel close/reopen.
+  const [compareShowAllFields, setCompareShowAllFields] = useState(false);
+  const [compareShowStandardFields, setCompareShowStandardFields] = useState(false);
   const [showPresetInput, setShowPresetInput] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [overwritePresetId, setOverwritePresetId] = useState<string | null>(null);
@@ -722,6 +725,10 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
                     }
                     node={compareTarget}
                     onClose={handleCompareClose}
+                    showAllFields={compareShowAllFields}
+                    onShowAllFieldsChange={setCompareShowAllFields}
+                    showStandardFields={compareShowStandardFields}
+                    onShowStandardFieldsChange={setCompareShowStandardFields}
                   />
                 </div>
               </>

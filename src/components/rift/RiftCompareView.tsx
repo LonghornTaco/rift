@@ -14,6 +14,11 @@ interface RiftCompareViewProps {
   targetContextId: string | null;
   node: DualTreeNode;
   onClose: () => void;
+  /** Lifted to the parent so the user's preference persists across item switches and panel open/close cycles. */
+  showAllFields: boolean;
+  onShowAllFieldsChange: (value: boolean) => void;
+  showStandardFields: boolean;
+  onShowStandardFieldsChange: (value: boolean) => void;
 }
 
 export function RiftCompareView({
@@ -22,6 +27,10 @@ export function RiftCompareView({
   targetContextId,
   node,
   onClose,
+  showAllFields,
+  onShowAllFieldsChange,
+  showStandardFields,
+  onShowStandardFieldsChange,
 }: RiftCompareViewProps) {
   const [ownFields, setOwnFields] = useState<CompareFieldSets | null>(null);
   const [standardFields, setStandardFields] = useState<CompareFieldSets | null>(null);
@@ -29,8 +38,6 @@ export function RiftCompareView({
   const [loadingStandard, setLoadingStandard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sideErrors, setSideErrors] = useState<{ source?: boolean; target?: boolean }>({});
-  const [showAllFields, setShowAllFields] = useState(false);
-  const [showStandardFields, setShowStandardFields] = useState(false);
 
   // Resizable column widths (null = use default/auto).
   const [fieldColWidth, setFieldColWidth] = useState<number | null>(null);
@@ -64,7 +71,9 @@ export function RiftCompareView({
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  // Reset state when the compared item changes.
+  // Reset fetched data when the compared item changes. Toggle preferences
+  // (showAllFields / showStandardFields) are intentionally not reset — they live
+  // in the parent so the user's selection persists across items and close/reopen.
   const nodePath = node.path;
   useEffect(() => {
     setOwnFields(null);
@@ -73,8 +82,6 @@ export function RiftCompareView({
     setLoadingStandard(false);
     setError(null);
     setSideErrors({});
-    setShowAllFields(false);
-    setShowStandardFields(false);
   }, [nodePath]);
 
   const hasSource = !!node.source;
@@ -180,7 +187,7 @@ export function RiftCompareView({
           <label className="text-xs flex items-center gap-1.5 cursor-pointer shrink-0">
             <Checkbox
               checked={showAllFields}
-              onCheckedChange={(v) => setShowAllFields(v === true)}
+              onCheckedChange={(v) => onShowAllFieldsChange(v === true)}
             />
             Show all fields
           </label>
@@ -188,7 +195,7 @@ export function RiftCompareView({
         <label className="text-xs flex items-center gap-1.5 cursor-pointer shrink-0">
           <Checkbox
             checked={showStandardFields}
-            onCheckedChange={(v) => setShowStandardFields(v === true)}
+            onCheckedChange={(v) => onShowStandardFieldsChange(v === true)}
           />
           Show standard fields
           {loadingStandard && <span className="text-muted-foreground">...</span>}
