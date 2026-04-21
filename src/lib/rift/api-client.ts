@@ -199,12 +199,15 @@ export async function fetchItemFields(
   options?: { includeStandard?: boolean },
 ): Promise<{ itemId: string; name: string; path: string; templateName: string; fields: Record<string, string> }> {
   const excludeStandard = !options?.includeStandard;
+  // Standard fields are inherited from the Standard Template, so ownFields: true filters
+  // them out regardless of excludeStandardFields. Flip both flags together.
+  const ownFields = excludeStandard;
   const query = {
     query: `query GetItemFields($path: String!) {
       item(where: { path: $path }) {
         itemId name path
         template { name }
-        fields(ownFields: true, excludeStandardFields: ${excludeStandard}) {
+        fields(ownFields: ${ownFields}, excludeStandardFields: ${excludeStandard}) {
           nodes { name value }
         }
       }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import { DualTreeNode } from '@/lib/rift/types';
 import { fetchItemFields } from '@/lib/rift/api-client';
@@ -31,6 +31,38 @@ export function RiftCompareView({
   const [sideErrors, setSideErrors] = useState<{ source?: boolean; target?: boolean }>({});
   const [showAllFields, setShowAllFields] = useState(false);
   const [showStandardFields, setShowStandardFields] = useState(false);
+
+  // Resizable column widths (null = use default/auto).
+  const [fieldColWidth, setFieldColWidth] = useState<number | null>(null);
+  const [sourceColWidth, setSourceColWidth] = useState<number | null>(null);
+  const fieldThRef = useRef<HTMLTableCellElement>(null);
+  const sourceThRef = useRef<HTMLTableCellElement>(null);
+
+  const startColumnResize = useCallback((col: 'field' | 'source', e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ref = col === 'field' ? fieldThRef : sourceThRef;
+    const startWidth = ref.current?.offsetWidth ?? 0;
+    const startX = e.clientX;
+    const setWidth = col === 'field' ? setFieldColWidth : setSourceColWidth;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      setWidth(Math.max(60, startWidth + delta));
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   // Reset state when the compared item changes.
   const nodePath = node.path;
@@ -186,21 +218,56 @@ export function RiftCompareView({
             {error}
           </div>
         ) : rows.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-            {isPaired && !showAllFields ? 'No field differences' : 'No fields to display'}
+          <div className="flex flex-col items-center justify-center py-8 gap-2 text-sm text-muted-foreground text-center px-4">
+            {isPaired && !showAllFields ? (
+              <>
+                <span>No own-field differences.</span>
+                {node.diff === 'different' && !showStandardFields && !loadingStandard && (
+                  <span className="text-xs max-w-md">
+                    This item is flagged as drifted — the difference may be in standard fields. Toggle <strong>Show standard fields</strong> above.
+                  </span>
+                )}
+              </>
+            ) : (
+              <span>No fields to display</span>
+            )}
           </div>
         ) : (
-          <table className="w-full text-sm border-collapse">
+          <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
             <thead className="sticky top-0 bg-card z-10">
               <tr>
-                <th className="text-left px-3 py-2 w-[30%] font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border">Field</th>
+                <th
+                  ref={fieldThRef}
+                  style={{ width: fieldColWidth ?? 180 }}
+                  className="relative text-left px-3 py-2 pr-6 font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border whitespace-nowrap"
+                >
+                  Field
+                  {(hasSource || hasTarget) && (
+                    <span
+                      onMouseDown={(e) => startColumnResize('field', e)}
+                      className="absolute top-1/4 right-0 h-1/2 w-px bg-muted-foreground/40 cursor-col-resize hover:bg-muted-foreground/70"
+                      aria-hidden="true"
+                    />
+                  )}
+                </th>
                 {hasSource && (
-                  <th className="text-left px-3 py-2 w-[35%] font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border">
+                  <th
+                    ref={sourceThRef}
+                    style={{ width: sourceColWidth ?? undefined }}
+                    className="relative text-left px-3 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border"
+                  >
                     Source{sideErrors.source && <span className="text-red-500 ml-1">(error)</span>}
+                    {hasTarget && (
+                      <span
+                        onMouseDown={(e) => startColumnResize('source', e)}
+                        className="absolute top-1/4 right-0 h-1/2 w-px bg-muted-foreground/40 cursor-col-resize hover:bg-muted-foreground/70"
+                        aria-hidden="true"
+                      />
+                    )}
                   </th>
                 )}
                 {hasTarget && (
-                  <th className="text-left px-3 py-2 w-[35%] font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border">
+                  <th className="text-left px-3 py-2 font-semibold text-muted-foreground text-xs uppercase tracking-wide border-b border-border">
                     Target{sideErrors.target && <span className="text-red-500 ml-1">(error)</span>}
                   </th>
                 )}
@@ -209,7 +276,7 @@ export function RiftCompareView({
             <tbody>
               {rows.map((row) => (
                 <tr key={row.name} className="border-t border-border align-top">
-                  <td className="px-3 py-2 font-mono text-xs text-muted-foreground break-words">{row.name}</td>
+                  <td className="px-3 py-2 pr-6 font-mono text-xs text-muted-foreground break-words">{row.name}</td>
                   {hasSource && (
                     <td className="px-3 py-2 whitespace-pre-wrap break-words">
                       {sideErrors.source ? <span className="text-red-500">Failed to load</span> : row.source}

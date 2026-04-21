@@ -717,12 +717,14 @@ export function RiftContentTree({
 
   return (
     <div className="relative min-h-full">
-      {/* Continuous column divider between Source and Target */}
-      <div
-        className="absolute top-0 bottom-0 w-px bg-border pointer-events-none"
-        style={{ left: '50%' }}
-        aria-hidden="true"
-      />
+      {/* Continuous column divider between Source and Target — hidden while loading so it doesn't cut through the spinner. */}
+      {!isLoading && (
+        <div
+          className="absolute top-0 bottom-0 w-px bg-border pointer-events-none"
+          style={{ left: '50%' }}
+          aria-hidden="true"
+        />
+      )}
 
       <div className="flex justify-between items-center mb-3">
         <div className="text-xs font-semibold text-muted-foreground">

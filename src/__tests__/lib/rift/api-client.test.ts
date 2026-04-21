@@ -374,6 +374,19 @@ describe('fetchItemFields', () => {
     expect(call.params.body.query).not.toContain('templateId');
   });
 
+  it('drops ownFields alongside excludeStandardFields when includeStandard is true', async () => {
+    const mutate = vi.fn().mockResolvedValue({
+      data: { data: { item: { itemId: 'i', name: 'n', path: '/p', template: { name: 'T' }, fields: { nodes: [] } } } },
+    });
+    const client = { mutate, query: vi.fn() } as unknown as ClientSDK;
+
+    await fetchItemFields(client, 'ctx', '/p', { includeStandard: true });
+
+    const call = mutate.mock.calls[0][1];
+    expect(call.params.body.query).toContain('ownFields: false');
+    expect(call.params.body.query).toContain('excludeStandardFields: false');
+  });
+
   it('throws when GraphQL response contains errors', async () => {
     const mutate = vi.fn().mockResolvedValue({
       data: {
@@ -403,6 +416,6 @@ describe('fetchItemFields', () => {
 
     const call = mutate.mock.calls[0][1];
     expect(call.params.body.query).toContain('excludeStandardFields: false');
-    expect(call.params.body.query).toContain('ownFields: true');
+    expect(call.params.body.query).toContain('ownFields: false');
   });
 });
