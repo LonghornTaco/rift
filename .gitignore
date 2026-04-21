@@ -9,3 +9,4 @@ tsconfig.tsbuildinfo
 !.env.production
 sbom.json
 .worktrees/
+resume-prompt.md
