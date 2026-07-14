@@ -359,15 +359,19 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         scope: path.scope,
         signal: controller.signal,
         onProgress: (phase, detail) => {
-          const chunksComplete = detail ? parseInt(detail.split('/')[0]) : undefined;
+          const [rawComplete, rawTotal] = (detail ?? '').split('/');
+          const chunksComplete =
+            rawComplete && !Number.isNaN(Number(rawComplete)) ? Number(rawComplete) : undefined;
+          const chunksTotal =
+            rawTotal && !Number.isNaN(Number(rawTotal)) ? Number(rawTotal) : undefined;
           const prev = progress[index];
           const events = [...(prev.events ?? [])];
           const last = events[events.length - 1];
-          // Collapse consecutive events with identical phase+detail (uploading 1/10 → 10/10 shouldn't spam)
+          // Collapse consecutive events with identical phase+detail (uploading 1/10 -> 10/10 shouldn't spam)
           if (!last || last.phase !== phase || last.detail !== detail) {
             events.push({ timestamp: Date.now(), phase, detail });
           }
-          progress[index] = { ...prev, phase, chunksComplete, events };
+          progress[index] = { ...prev, phase, chunksComplete, chunksTotal, events };
           setTransferProgress([...progress]);
         },
       }).catch((err) => {
@@ -762,6 +766,12 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
               <RiftProgressOverlay
                 isActive={isMigrating}
                 transferProgress={transferProgress}
+                sourceEnvName={
+                  environments.find((e) => e.tenantId === selectedSourceEnvId)?.tenantDisplayName
+                }
+                targetEnvName={
+                  environments.find((e) => e.tenantId === selectedTargetEnvId)?.tenantDisplayName
+                }
                 onCancel={() => setShowCancelConfirm(true)}
                 onClose={() => {
                   setMigrationComplete(false);
