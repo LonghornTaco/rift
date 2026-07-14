@@ -56,7 +56,7 @@ Coarse user-facing stages (for status wording; not shown as a stepper):
 | `assembling` | Transfer | "Assembling package on {target}" |
 | `consuming` | Import | "Importing into {target}" |
 | `cleanup` | Import | "Finishing up" |
-| `complete` | Done | "Done - {elapsed}" |
+| `complete` | Done | "Done" (per-path elapsed is deferred; the overall elapsed lives in the header) |
 | `error` | Failed | friendly message (see below) |
 
 `{source}` / `{target}` use the environment display names, passed into the overlay from `RiftMigrate` (which already holds the selected source/target env). If a name is unavailable, fall back to "source"/"target".
