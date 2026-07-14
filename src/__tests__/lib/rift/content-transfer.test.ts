@@ -9,7 +9,7 @@ function wrap<T>(body: T) {
 }
 
 function createMockClient() {
-  const mutate = vi.fn(async (key: string) => {
+  const mutate = vi.fn(async (key: string, _options?: unknown) => {
     switch (key) {
       case 'xmc.contentTransfer.createContentTransfer':
         return wrap({});
