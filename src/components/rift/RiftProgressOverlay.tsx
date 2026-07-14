@@ -190,7 +190,7 @@ export function RiftProgressOverlay({
                   <div
                     className={cn('h-full rounded-full', barColor, indeterminate && 'animate-pulse')}
                     style={{
-                      width: f.percent == null ? '100%' : `${f.percent}%`,
+                      width: f.percent != null ? `${f.percent}%` : indeterminate ? '100%' : '0%',
                       opacity: indeterminate ? 0.4 : 1,
                     }}
                   />
