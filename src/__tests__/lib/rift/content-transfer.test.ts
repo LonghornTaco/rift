@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { transferPath } from '@/lib/rift/content-transfer';
+import { formatProgress } from '@/lib/rift/progress-format';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
+import type { TransferPhase } from '@/lib/rift/types';
 
 // The SDK proxy wraps responses as { data: <body>, request, response }.
 // Our helpers expect that shape, so mocks return it too.
@@ -81,5 +83,29 @@ describe('transferPath', () => {
 
     expect(phases).toContain('creating');
     expect(phases).toContain('complete');
+    // Cleanup runs inside the finally, so its phase is reported...
+    expect(phases).toContain('cleanup');
+    // ...but 'complete' must be the LAST phase on a successful transfer so the
+    // row ends terminal (checkmark) instead of stuck on 'cleanup' (spinner).
+    expect(phases[phases.length - 1]).toBe('complete');
+    expect(phases.indexOf('cleanup')).toBeLessThan(phases.indexOf('complete'));
+  });
+
+  it('ends terminal (state complete, not active) on a successful transfer', async () => {
+    const { client } = createMockClient();
+
+    const phases: TransferPhase[] = [];
+    await transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      onProgress: (phase) => phases.push(phase),
+    });
+
+    const finalPhase = phases[phases.length - 1];
+    const formatted = formatProgress({ itemPath: '/sitecore/content/Home', phase: finalPhase });
+    expect(formatted.state).toBe('complete');
+    expect(formatted.state).not.toBe('active');
   });
 });

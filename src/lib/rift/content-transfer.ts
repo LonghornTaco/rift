@@ -163,10 +163,9 @@ export async function transferPath(
       );
       await pollBlobState(client, targetContextId, fileName, signal);
     }
-
-    report('complete');
   } finally {
-    // 6. Cleanup: delete the transfer on both envs (best-effort).
+    // 6. Cleanup: delete the transfer on both envs (best-effort). This runs on
+    //    both success and error, and shows a transient "Finishing up" status.
     report('cleanup');
     await Promise.allSettled([
       client.mutate('xmc.contentTransfer.deleteContentTransfer', {
@@ -177,6 +176,12 @@ export async function transferPath(
       }),
     ]);
   }
+
+  // Report the terminal success phase LAST. Statements after a try/finally run
+  // only if the try body did not throw (and after the finally completes), so on
+  // error the throw propagates before we get here and the row stays terminal
+  // 'error'; on success the row ends on 'complete' (checkmark), not 'cleanup'.
+  report('complete');
 }
 
 async function pollUntilReady(
