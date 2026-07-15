@@ -297,6 +297,13 @@ interface RiftContentTreeProps {
   onChildrenLoaded?: (parentPath: string, children: TreeNode[]) => void;
   disabled?: boolean;
   refreshKey?: number;
+  /**
+   * Bump to re-fetch the children of currently-expanded nodes and merge them into
+   * the cache WITHOUT collapsing the tree or clearing the cache. Used after a
+   * successful migration so the target side reflects newly-migrated items while
+   * preserving the user's expansion state.
+   */
+  preserveExpansionRefreshKey?: number;
   onCompareItem: (node: DualTreeNode) => void;
   compareTargetPath: string | null;
 }
@@ -312,6 +319,7 @@ export function RiftContentTree({
   onChildrenLoaded,
   disabled,
   refreshKey,
+  preserveExpansionRefreshKey,
   onCompareItem,
   compareTargetPath,
 }: RiftContentTreeProps) {
@@ -332,6 +340,9 @@ export function RiftContentTree({
 
   const childrenCacheRef = useRef(childrenCache);
   childrenCacheRef.current = childrenCache;
+
+  const expandedNodesRef = useRef(expandedNodes);
+  expandedNodesRef.current = expandedNodes;
 
   const onChildrenLoadedRef = useRef(onChildrenLoaded);
   onChildrenLoadedRef.current = onChildrenLoaded;
@@ -550,6 +561,52 @@ export function RiftContentTree({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, refreshKey, targetContextId]);
+
+  // Soft refresh: re-fetch the children of every currently-expanded node and
+  // merge the results into the cache, WITHOUT resetting expansion or clearing
+  // the cache. Triggered after a successful migration so the target side picks
+  // up newly-created items (ghost/drift rows resolve) while the user keeps their
+  // place in the tree. Skipped on mount (key starts at 0).
+  useEffect(() => {
+    if (!preserveExpansionRefreshKey) return;
+    const paths = Array.from(expandedNodesRef.current);
+    if (paths.length === 0) return;
+
+    let cancelled = false;
+    prefetchGenRef.current++; // drop any in-flight prefetches; we are re-reading
+
+    (async () => {
+      const results = await Promise.all(
+        paths.map(async (path) => {
+          try {
+            const children = await fetchDualTreeChildren(client, contextId, targetContextId, path);
+            return { path, children };
+          } catch {
+            return null;
+          }
+        })
+      );
+      if (cancelled) return;
+
+      const valid = results.filter(
+        (r): r is { path: string; children: DualTreeNode[] } => r !== null
+      );
+      setChildrenCache((prev) => {
+        const next = new Map(prev);
+        for (const r of valid) next.set(r.path, r.children);
+        return next;
+      });
+      for (const r of valid) {
+        const sourceOnly = r.children.map((c) => c.source).filter((n): n is TreeNode => !!n);
+        onChildrenLoadedRef.current?.(r.path, sourceOnly);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preserveExpansionRefreshKey]);
 
   const getVisibleChildPaths = useCallback(
     (node: DualTreeNode, isMedia: boolean): Set<string> | undefined => {

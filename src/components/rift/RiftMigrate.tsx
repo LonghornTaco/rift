@@ -92,6 +92,10 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
   const [splitPercent, setSplitPercent] = useState(60);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
+  // Bumped after a successful migration to refresh the tree while KEEPING the
+  // user's expansion state (unlike treeRefreshKey, which the Refresh button uses
+  // for a full reset that collapses back to the default view).
+  const [treeSoftRefreshKey, setTreeSoftRefreshKey] = useState(0);
   const splitterContainerRef = useRef<HTMLDivElement>(null);
   const [compareTarget, setCompareTarget] = useState<DualTreeNode | null>(null);
   const [comparePercent, setComparePercent] = useState(35);
@@ -417,6 +421,14 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         elapsedMs: elapsed,
         status: hasErrors ? (progress.every((p) => p.phase === 'error') ? 'failed' : 'partial') : 'success',
       });
+
+      // Refresh the content tree so the target side reflects what was just
+      // migrated. Without this, migrated items keep showing as ghost/drift rows
+      // until a manual Refresh. Uses the soft key so the user's expanded tree
+      // state is preserved. Only needed when at least one path completed.
+      if (progress.some((p) => p.phase === 'complete')) {
+        setTreeSoftRefreshKey((k) => k + 1);
+      }
     }
   }
 
@@ -700,6 +712,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
                   onChildrenLoaded={handleChildrenLoaded}
                   disabled={isMigrating}
                   refreshKey={treeRefreshKey}
+                  preserveExpansionRefreshKey={treeSoftRefreshKey}
                   onCompareItem={handleCompareItemClick}
                   compareTargetPath={compareTarget?.path ?? null}
                 />
