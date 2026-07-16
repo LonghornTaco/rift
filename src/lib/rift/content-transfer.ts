@@ -67,7 +67,17 @@ export async function transferPath(
 
   report('creating');
 
-  // 1. Create transfer on both source and target with same transferId.
+  // 1. Create transfer on both source and target with the same transferId.
+  //    Only the SOURCE carries the dataTrees/itemPath config — it defines what to
+  //    export. The TARGET is only a receiver for the uploaded chunks, so it is
+  //    created with an EMPTY dataTrees. Passing the source itemPath to the target
+  //    makes Sitecore validate that path against the target's master database and
+  //    reject any item that doesn't already exist there:
+  //      "Invalid configuration. Item doesn't exist by <path> in master database."
+  //    That broke every transfer of a NEW item (present on source, absent on
+  //    target) — Rift could only overwrite existing items, never create. Per
+  //    Sitecore's docs the destination needs no upfront item-path configuration;
+  //    the item paths and merge strategy travel inside the exported chunks.
   assertOk(
     'createContentTransfer (source)',
     await client.mutate('xmc.contentTransfer.createContentTransfer', {
@@ -82,7 +92,7 @@ export async function transferPath(
     await client.mutate('xmc.contentTransfer.createContentTransfer', {
       params: {
         query: { sitecoreContextId: targetContextId },
-        body: { configuration, transferId },
+        body: { configuration: { dataTrees: [] }, transferId },
       },
     })
   );
