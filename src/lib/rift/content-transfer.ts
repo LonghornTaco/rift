@@ -67,32 +67,27 @@ export async function transferPath(
 
   report('creating');
 
-  // 1. Create transfer on both source and target with the same transferId.
-  //    Only the SOURCE carries the dataTrees/itemPath config — it defines what to
-  //    export. The TARGET is only a receiver for the uploaded chunks, so it is
-  //    created with an EMPTY dataTrees. Passing the source itemPath to the target
-  //    makes Sitecore validate that path against the target's master database and
-  //    reject any item that doesn't already exist there:
-  //      "Invalid configuration. Item doesn't exist by <path> in master database."
-  //    That broke every transfer of a NEW item (present on source, absent on
-  //    target) — Rift could only overwrite existing items, never create. Per
-  //    Sitecore's docs the destination needs no upfront item-path configuration;
-  //    the item paths and merge strategy travel inside the exported chunks.
+  // 1. Create the transfer on the SOURCE only. createContentTransfer is a
+  //    source-side operation: the SDK documents its itemPath as "the existing item
+  //    path in the Source environment", and it validates that path against the
+  //    SOURCE master database while it starts the export. The TARGET is never sent
+  //    a create — the receiving transfer is established implicitly by the first
+  //    saveChunk (PUT chunk) below, reusing this same client-generated transferId,
+  //    and is then completed and consumed there.
+  //
+  //    A prior version also called createContentTransfer against the target with
+  //    the same configuration. That validated the SOURCE itemPath against the
+  //    TARGET database, so it rejected any item not already present on the target
+  //    ("Invalid configuration. Item doesn't exist by <path> in master database")
+  //    and rejected an empty dataTrees ("DataTrees are empty or missing; there is
+  //    nothing to transfer"). It only ever succeeded when the item already existed
+  //    on both sides, which is why NEW items selected directly could never migrate.
   assertOk(
     'createContentTransfer (source)',
     await client.mutate('xmc.contentTransfer.createContentTransfer', {
       params: {
         query: { sitecoreContextId: sourceContextId },
         body: { configuration, transferId },
-      },
-    })
-  );
-  assertOk(
-    'createContentTransfer (target)',
-    await client.mutate('xmc.contentTransfer.createContentTransfer', {
-      params: {
-        query: { sitecoreContextId: targetContextId },
-        body: { configuration: { dataTrees: [] }, transferId },
       },
     })
   );

@@ -62,7 +62,9 @@ describe('transferPath', () => {
     });
 
     const mutateKeys = mutate.mock.calls.map((c) => c[0]);
-    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.createContentTransfer')).toHaveLength(2);
+    // createContentTransfer is source-only. The target transfer is established
+    // implicitly by saveChunk, so there must be exactly ONE create call.
+    expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.createContentTransfer')).toHaveLength(1);
     expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.saveChunk')).toHaveLength(1);
     expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.completeChunkSetTransfer')).toHaveLength(1);
     expect(mutateKeys.filter((k) => k === 'xmc.contentTransfer.deleteContentTransfer')).toHaveLength(2);
@@ -81,23 +83,21 @@ describe('transferPath', () => {
     expect(saveArgs?.params?.query).toMatchObject({ sitecoreContextId: 'tgt-ctx' });
     expect(saveArgs?.params?.body).toBeInstanceOf(Blob);
 
-    // The SOURCE create carries the item path config; the TARGET create must be
-    // a bare receiver with empty dataTrees. Sending the source itemPath to the
-    // target makes Sitecore reject any item not already present there ("Item
-    // doesn't exist by <path> in master database"), which blocks new-item
-    // transfers. Regression guard for that bug.
+    // The single create must target the SOURCE context and carry the itemPath;
+    // the target must never receive a createContentTransfer. Sending the source
+    // itemPath to the target validated it against the target DB and rejected any
+    // item not already present there, blocking new-item transfers. Regression
+    // guard for that bug.
     const createCalls = mutate.mock.calls.filter(
       (c) => c[0] === 'xmc.contentTransfer.createContentTransfer'
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bodyFor = (ctx: string) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (createCalls.find((c) => (c[1] as any)?.params?.query?.sitecoreContextId === ctx)?.[1] as any)
-        ?.params?.body;
-    expect(bodyFor('src-ctx').configuration.dataTrees).toEqual([
+    const createArgs = createCalls.map((c) => c[1] as any);
+    expect(createArgs.every((a) => a?.params?.query?.sitecoreContextId === 'src-ctx')).toBe(true);
+    expect(createArgs.some((a) => a?.params?.query?.sitecoreContextId === 'tgt-ctx')).toBe(false);
+    expect(createArgs[0]?.params?.body?.configuration?.dataTrees).toEqual([
       { itemPath: '/sitecore/content/Home', scope: 'SingleItem', mergeStrategy: 'OverrideExistingItem' },
     ]);
-    expect(bodyFor('tgt-ctx').configuration.dataTrees).toEqual([]);
 
     expect(phases).toContain('creating');
     expect(phases).toContain('complete');
