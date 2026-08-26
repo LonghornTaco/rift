@@ -10,10 +10,11 @@ function wrap<T>(body: T) {
   return { data: body, request: {} as Request, response: { status: 200 } as Response };
 }
 
-function createMockClient() {
+function createMockClient(opts?: { onCreate?: () => Promise<void> }) {
   const mutate = vi.fn(async (key: string, _options?: unknown) => {
     switch (key) {
       case 'xmc.contentTransfer.createContentTransfer':
+        if (opts?.onCreate) await opts.onCreate();
         return wrap({});
       case 'xmc.contentTransfer.saveChunk':
         return wrap({});
@@ -107,6 +108,38 @@ describe('transferPath', () => {
     // row ends terminal (checkmark) instead of stuck on 'cleanup' (spinner).
     expect(phases[phases.length - 1]).toBe('complete');
     expect(phases.indexOf('cleanup')).toBeLessThan(phases.indexOf('complete'));
+  });
+
+  it('serializes createContentTransfer across concurrent transfers (never overlaps)', async () => {
+    // Sitecore's source-side create mutates a shared non-thread-safe registry;
+    // two creates in flight at once corrupt it and throw a spurious .NET
+    // "same key already added" 500. The UI fires every path's transfer in the
+    // same tick, so the create step must be gated to one-in-flight. This mock
+    // makes each create yield, so an ungated implementation would show >1
+    // concurrent create and fail this test.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const { client } = createMockClient({
+      onCreate: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+      },
+    });
+
+    await Promise.all(
+      ['/sitecore/content/A', '/sitecore/content/B', '/sitecore/content/C'].map((itemPath) =>
+        transferPath(client, {
+          sourceContextId: 'src-ctx',
+          targetContextId: 'tgt-ctx',
+          itemPath,
+          scope: 'ItemAndDescendants',
+        })
+      )
+    );
+
+    expect(maxInFlight).toBe(1);
   });
 
   it('ends terminal (state complete, not active) on a successful transfer', async () => {

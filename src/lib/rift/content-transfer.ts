@@ -26,6 +26,27 @@ interface ChunkSetMeta {
   ChunkCount: number;
 }
 
+// Sitecore's source-side createContentTransfer mutates a shared, non-thread-safe
+// server registry. Two creates in flight at once corrupt it and the handler throws
+// a spurious .NET 500 — {"Error":"An item with the same key already been added."} —
+// even for genuinely distinct items. The migration UI dispatches every path's
+// transfer in the same tick (paths.map(() => transferPath(...))), so without a gate
+// all creates race and all but one fail. Serialize just the create step across every
+// concurrent transferPath() call: only one create is ever in flight, while the rest
+// of the lifecycle (keyed by the unique transferId) still runs in parallel.
+let createGate: Promise<unknown> = Promise.resolve();
+
+function runCreateExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  const run = createGate.then(fn, fn);
+  // Advance the gate to the settled (never-rejected) tail so one failed create
+  // doesn't poison the chain for the next waiter.
+  createGate = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
 /**
  * Execute the full Content Transfer API lifecycle for a single path,
  * routed entirely through the Marketplace iframe proxy (client.mutate/query).
@@ -84,12 +105,14 @@ export async function transferPath(
   //    on both sides, which is why NEW items selected directly could never migrate.
   assertOk(
     'createContentTransfer (source)',
-    await client.mutate('xmc.contentTransfer.createContentTransfer', {
-      params: {
-        query: { sitecoreContextId: sourceContextId },
-        body: { configuration, transferId },
-      },
-    })
+    await runCreateExclusive(() =>
+      client.mutate('xmc.contentTransfer.createContentTransfer', {
+        params: {
+          query: { sitecoreContextId: sourceContextId },
+          body: { configuration, transferId },
+        },
+      })
+    )
   );
 
   try {
