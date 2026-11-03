@@ -109,8 +109,7 @@ export class TreeWalker {
   private pump(): void {
     while (!this.paused && this.inFlight.size < this.concurrency && this.queue.length > 0) {
       const path = this.queue.shift()!;
-      if (this.isCached(path)) continue;
-      this.start(path);
+      if (!this.isCached(path)) this.start(path);
       this.emit();
     }
   }

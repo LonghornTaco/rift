@@ -109,6 +109,18 @@ describe('TreeWalker', () => {
     expect(walker.progress).toEqual({ checked: 1, pending: 0, inFlight: 1, paused: false });
   });
 
+  it('reports progress when the only queued path is skipped as cached', async () => {
+    const cached = new Set<string>();
+    const { walker, reads, fetch, onProgress } = setup({ concurrency: 1, isCached: (path) => cached.has(path) });
+    walker.enqueue(['/r/a', '/r/b']);
+    cached.add('/r/b');
+
+    reads[0].resolve([]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchedPaths(fetch)).toEqual(['/r/a']);
+    expect(onProgress.mock.lastCall?.[0]).toEqual({ checked: 1, pending: 0, inFlight: 0, paused: false });
+  });
+
   it('stores a result, counts it and follows next()', async () => {
     const { walker, reads, fetch, next, onLoaded } = setup();
     next.mockReturnValue(['/r/a/x']);
