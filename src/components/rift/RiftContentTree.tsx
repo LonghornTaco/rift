@@ -3,13 +3,30 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import { TreeNode, MigrationPath, DualTreeNode } from '@/lib/rift/types';
-import { fetchDualTreeChildren } from '@/lib/rift/api-client';
+import { fetchDualTreeChildren, fetchDualTreeChildrenStrict } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Folder, File } from 'lucide-react';
 import { DriftPill } from './DriftPill';
-import type { DriftRollup } from '@/lib/rift/drift-rollup';
+import {
+  computeDriftRollup,
+  missingFolders,
+  walkableChildPaths,
+  type DriftRollup,
+} from '@/lib/rift/drift-rollup';
+import { TreeWalker, type WalkProgress } from '@/lib/rift/tree-walker';
 
 import { cn } from '@/lib/utils';
+
+const EMPTY_ROLLUP: ReadonlyMap<string, DriftRollup> = new Map();
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg className={cn('animate-spin', className)} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
+  );
+}
 
 function getFolderIconClasses(diff: DualTreeNode['diff']): string {
   if (diff === 'match') return 'fill-emerald-500/30 stroke-emerald-500';
@@ -187,6 +204,7 @@ interface TreeNodeRowProps {
   targetContextId: string | null;
   onCompareItem: (node: DualTreeNode) => void;
   compareTargetPath: string | null;
+  driftRollup: ReadonlyMap<string, DriftRollup>;
 }
 
 function TreeNodeRow({
@@ -205,6 +223,7 @@ function TreeNodeRow({
   targetContextId,
   onCompareItem,
   compareTargetPath,
+  driftRollup,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.path);
   const isLoading = loadingNodes.has(node.path);
@@ -253,6 +272,7 @@ function TreeNodeRow({
             onTogglePath={onTogglePath}
             onCompareItem={onCompareItem}
             isCompareTarget={compareTargetPath === node.path}
+            rollup={driftRollup.get(node.path)}
           />
         </div>
 
@@ -264,6 +284,7 @@ function TreeNodeRow({
               targetContextId={targetContextId}
               onCompareItem={onCompareItem}
               isCompareTarget={compareTargetPath === node.path}
+              rollup={driftRollup.get(node.path)}
             />
           </div>
         )}
@@ -287,6 +308,7 @@ function TreeNodeRow({
             targetContextId={targetContextId}
             onCompareItem={onCompareItem}
             compareTargetPath={compareTargetPath}
+            driftRollup={driftRollup}
           />
         ))}
     </>
@@ -336,10 +358,14 @@ export function RiftContentTree({
   const [showHiddenItems, setShowHiddenItems] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const prefetchQueueRef = useRef<string[]>([]);
-  const prefetchActiveRef = useRef(0);
-  const prefetchGenRef = useRef(0);
-  const MAX_PREFETCH_CONCURRENT = 2;
+  const walkerRef = useRef<TreeWalker | null>(null);
+  const [walkProgress, setWalkProgress] = useState<WalkProgress>({
+    checked: 0,
+    pending: 0,
+    inFlight: 0,
+    paused: false,
+  });
+  const [walkRoots, setWalkRoots] = useState<string[]>([]);
 
   // The two top-level nodes: "content" and "media library" from /sitecore
   const [contentNode, setContentNode] = useState<DualTreeNode | null>(null);
@@ -353,46 +379,6 @@ export function RiftContentTree({
 
   const onChildrenLoadedRef = useRef(onChildrenLoaded);
   onChildrenLoadedRef.current = onChildrenLoaded;
-
-  const processPrefetchQueue = useCallback(async () => {
-    while (
-      prefetchQueueRef.current.length > 0 &&
-      prefetchActiveRef.current < MAX_PREFETCH_CONCURRENT
-    ) {
-      const path = prefetchQueueRef.current.shift();
-      if (!path || childrenCacheRef.current.has(path)) continue;
-
-      const gen = prefetchGenRef.current;
-      prefetchActiveRef.current++;
-      try {
-        const children = await fetchDualTreeChildren(client, contextId, targetContextId, path);
-        if (prefetchGenRef.current !== gen) return; // stale — drop
-        setChildrenCache((prev) => {
-          if (prev.has(path)) return prev;
-          const next = new Map(prev);
-          next.set(path, children);
-          return next;
-        });
-        // onChildrenLoaded still emits the source-side TreeNode[] for selection math.
-        const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
-        onChildrenLoadedRef.current?.(path, sourceOnly);
-      } catch {
-        // Silent — prefetch failures are not user-facing
-      } finally {
-        prefetchActiveRef.current--;
-        processPrefetchQueue();
-      }
-    }
-  }, [client, contextId, targetContextId]);
-
-  const enqueuePrefetch = useCallback((children: DualTreeNode[]) => {
-    const toFetch = children
-      .filter((c) => c.hasChildren && !childrenCacheRef.current.has(c.path))
-      .map((c) => c.path);
-    if (toFetch.length === 0) return;
-    prefetchQueueRef.current.push(...toFetch);
-    processPrefetchQueue();
-  }, [processPrefetchQueue]);
 
   const selectedPathSet = new Set(
     selectedPaths.map((p) => p.itemPath)
@@ -445,6 +431,40 @@ export function RiftContentTree({
     };
   }, [rootPath]);
 
+  // Background drift walk. Declared before the initial-load effect so the walker
+  // exists by the time loadTrees seeds it. No target means no walk.
+  useEffect(() => {
+    if (targetContextId === null) {
+      walkerRef.current = null;
+      setWalkProgress({ checked: 0, pending: 0, inFlight: 0, paused: false });
+      return;
+    }
+
+    const walker = new TreeWalker({
+      fetch: (p) => fetchDualTreeChildrenStrict(client, contextId, targetContextId, p),
+      isCached: (p) => childrenCacheRef.current.has(p),
+      next: walkableChildPaths,
+      onLoaded: (path, children) => {
+        setChildrenCache((prev) => {
+          if (prev.has(path)) return prev;
+          const next = new Map(prev);
+          next.set(path, children);
+          return next;
+        });
+        // onChildrenLoaded still emits the source-side TreeNode[] for selection math.
+        const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
+        onChildrenLoadedRef.current?.(path, sourceOnly);
+      },
+      onProgress: setWalkProgress,
+    });
+    walkerRef.current = walker;
+
+    return () => {
+      walker.reset();
+      if (walkerRef.current === walker) walkerRef.current = null;
+    };
+  }, [client, contextId, targetContextId]);
+
   // Fetch both trees on mount
   useEffect(() => {
     let cancelled = false;
@@ -457,9 +477,7 @@ export function RiftContentTree({
     const loadTrees = async () => {
       if (!pathInfo) return;
 
-      prefetchQueueRef.current = [];
-      prefetchActiveRef.current = 0;
-      prefetchGenRef.current++; // invalidate any in-flight prefetches
+      walkerRef.current?.reset(); // drop any walk from a previous load
 
       try {
         const sitecoreChildren = await fetchDualTreeChildren(
@@ -477,6 +495,7 @@ export function RiftContentTree({
 
         const newCache = new Map<string, DualTreeNode[]>();
         const expandPaths = new Set<string>();
+        const roots: string[] = [];
 
         const emitChildrenLoaded = (path: string, dual: DualTreeNode[]) => {
           const sourceOnly = dual.map((d) => d.source).filter((n): n is TreeNode => !!n);
@@ -486,6 +505,7 @@ export function RiftContentTree({
         if (contentN) {
           expandPaths.add(contentN.path);
           let currentPath = contentN.path;
+          let contentMatched = true;
 
           for (const seg of pathInfo.segments) {
             if (cancelled) return;
@@ -496,21 +516,19 @@ export function RiftContentTree({
             const match = children.find((c) => c.name === seg);
             if (!match) {
               console.warn(`[Rift] Content path segment "${seg}" not found under ${currentPath}`);
+              contentMatched = false;
               break;
             }
             expandPaths.add(match.path);
             currentPath = match.path;
           }
+          if (contentMatched) roots.push(currentPath);
 
           if (cancelled) return;
           try {
             const siteChildren = await fetchDualTreeChildren(client, contextId, targetContextId, currentPath);
             newCache.set(currentPath, siteChildren);
             emitChildrenLoaded(currentPath, siteChildren);
-
-            for (const child of siteChildren.filter((c) => c.hasChildren)) {
-              if (!newCache.has(child.path)) prefetchQueueRef.current.push(child.path);
-            }
           } catch {}
         }
 
@@ -518,6 +536,7 @@ export function RiftContentTree({
           expandPaths.add(mediaLibN.path);
           const mediaSegments = ['Project', ...pathInfo.segments];
           let currentPath = mediaLibN.path;
+          let mediaMatched = true;
 
           for (const seg of mediaSegments) {
             if (cancelled) return;
@@ -528,6 +547,7 @@ export function RiftContentTree({
             const match = children.find((c) => c.name === seg);
             if (!match) {
               console.warn(`[Rift] Media path segment "${seg}" not found under ${currentPath}`);
+              mediaMatched = false;
               break;
             }
             currentPath = match.path;
@@ -536,6 +556,7 @@ export function RiftContentTree({
               expandPaths.add(match.path);
             }
           }
+          if (mediaMatched) roots.push(currentPath);
 
           if (cancelled) return;
           try {
@@ -554,7 +575,8 @@ export function RiftContentTree({
         });
         setExpandedNodes(expandPaths);
         setIsLoading(false);
-        processPrefetchQueue();
+        setWalkRoots(roots);
+        walkerRef.current?.enqueue(missingFolders(newCache, roots));
       } catch (err) {
         console.error('[Rift] Failed to load content trees:', err);
         if (!cancelled) setIsLoading(false);
@@ -580,7 +602,7 @@ export function RiftContentTree({
     if (paths.length === 0) return;
 
     let cancelled = false;
-    prefetchGenRef.current++; // drop any in-flight prefetches; we are re-reading
+    walkerRef.current?.reset(); // drop any in-flight walk reads; we are re-reading
 
     (async () => {
       const results = await Promise.all(
@@ -672,7 +694,7 @@ export function RiftContentTree({
           setChildrenCache((prev) => new Map(prev).set(node.path, children));
           const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
           onChildrenLoadedRef.current?.(node.path, sourceOnly);
-          enqueuePrefetch(children);
+          walkerRef.current?.enqueue(walkableChildPaths(children), 'front');
         } catch {
           // Silently handle
         } finally {
@@ -684,7 +706,15 @@ export function RiftContentTree({
         }
       }
     },
-    [enqueuePrefetch, client, contextId, targetContextId],
+    [client, contextId, targetContextId],
+  );
+
+  const driftRollup = useMemo(
+    () =>
+      targetContextId !== null && walkRoots.length > 0
+        ? computeDriftRollup(childrenCache, walkRoots)
+        : EMPTY_ROLLUP,
+    [childrenCache, walkRoots, targetContextId],
   );
 
   const baseTreeRowProps = {
@@ -700,6 +730,7 @@ export function RiftContentTree({
     targetContextId,
     onCompareItem,
     compareTargetPath,
+    driftRollup,
   };
 
   // Render a branch of the tree with per-level filtering
@@ -749,6 +780,7 @@ export function RiftContentTree({
               onTogglePath={onTogglePath}
               onCompareItem={onCompareItem}
               isCompareTarget={compareTargetPath === node.path}
+              rollup={driftRollup.get(node.path)}
             />
           </div>
 
@@ -759,6 +791,7 @@ export function RiftContentTree({
                 targetContextId={targetContextId}
                 onCompareItem={onCompareItem}
                 isCompareTarget={compareTargetPath === node.path}
+                rollup={driftRollup.get(node.path)}
               />
             </div>
           )}
@@ -798,13 +831,21 @@ export function RiftContentTree({
         <div className="text-xs font-semibold text-muted-foreground">
           CONTENT TREE
         </div>
-        <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
-          <Checkbox
-            checked={showHiddenItems}
-            onCheckedChange={(checked) => setShowHiddenItems(checked === true)}
-          />
-          Show hidden items
-        </label>
+        <div className="flex items-center gap-4">
+          {walkProgress.pending + walkProgress.inFlight > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Spinner className="h-3 w-3" />
+              Scanning for drift: {walkProgress.checked} folders checked
+            </span>
+          )}
+          <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
+            <Checkbox
+              checked={showHiddenItems}
+              onCheckedChange={(checked) => setShowHiddenItems(checked === true)}
+            />
+            Show hidden items
+          </label>
+        </div>
       </div>
 
       {targetContextId === null && (
@@ -822,10 +863,7 @@ export function RiftContentTree({
 
       {isLoading ? (
         <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
-          <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
+          <Spinner className="h-6 w-6" />
           <span className="text-sm">Loading content tree...</span>
         </div>
       ) : (
