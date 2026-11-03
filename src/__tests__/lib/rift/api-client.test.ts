@@ -5,6 +5,7 @@ import {
   fetchSites,
   zipDualTreeChildren,
   fetchDualTreeChildren,
+  fetchDualTreeChildrenStrict,
   fetchItemFields,
   repairChildList,
 } from '@/lib/rift/api-client';
@@ -462,6 +463,44 @@ describe('fetchTreeChildrenStrict', () => {
       query: vi.fn(),
     } as unknown as ClientSDK;
     await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).rejects.toThrow(/503/);
+  });
+});
+
+describe('fetchDualTreeChildrenStrict', () => {
+  // The drift walk caches a count per folder, so a failed side must reject
+  // rather than degrade to [] (which would be cached as a wrong count).
+  it('pairs both sides and sets diff like the lenient fetch', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([{ itemId: 's1', name: 'Home', path: '/site/Home', updated: 'A' }]),
+      treeResponse([{ itemId: 't1', name: 'Home', path: '/site/Home', updated: 'B' }]),
+    ]);
+    const result = await fetchDualTreeChildrenStrict(client, 'src', 'tgt', '/site');
+    expect(result).toEqual([expect.objectContaining({ path: '/site/Home', diff: 'different' })]);
+  });
+
+  it('rejects when only the target read fails instead of returning ghosts', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([{ itemId: 's1', name: 'Home', path: '/site/Home' }]),
+    ]);
+    (client.mutate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: { errors: [{ message: 'timeout' }] },
+    });
+    await expect(fetchDualTreeChildrenStrict(client, 'src', 'tgt', '/site')).rejects.toThrow(/timeout/);
+  });
+
+  it('rejects when the source parent does not exist', async () => {
+    const client = mockClientWithResponses([{ item: null }, treeResponse([])]);
+    await expect(fetchDualTreeChildrenStrict(client, 'src', 'tgt', '/site')).rejects.toThrow(/not found/i);
+  });
+
+  it('reads the source only when targetContextId is null', async () => {
+    const client = mockClientWithResponses([
+      treeResponse([{ itemId: 's1', name: 'Home', path: '/site/Home' }]),
+    ]);
+    const result = await fetchDualTreeChildrenStrict(client, 'src', null, '/site');
+    expect(client.mutate).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(1);
+    expect(result[0].target).toBeUndefined();
   });
 });
 

@@ -269,6 +269,28 @@ export async function fetchDualTreeChildren(
 }
 
 /**
+ * Strict counterpart of fetchDualTreeChildren, for the drift walk. The walk
+ * caches a descendant count per folder, so a side that failed to read must
+ * reject: the lenient variant's [] (or source-only pairs) would be cached as a
+ * wrong count. Rejects if either side rejects; with a null target only the
+ * source is read.
+ */
+export async function fetchDualTreeChildrenStrict(
+  client: ClientSDK,
+  sourceContextId: string,
+  targetContextId: string | null,
+  parentPath: string,
+): Promise<DualTreeNode[]> {
+  const [sourceChildren, targetChildren] = await Promise.all([
+    fetchTreeChildrenStrict(client, sourceContextId, parentPath),
+    targetContextId
+      ? fetchTreeChildrenStrict(client, targetContextId, parentPath)
+      : Promise.resolve(null),
+  ]);
+  return zipDualTreeChildren(sourceChildren, targetChildren);
+}
+
+/**
  * Fetch sites via XM Apps Sites REST API.
  * Fetches both sites and collections to construct the full content root path.
  */
