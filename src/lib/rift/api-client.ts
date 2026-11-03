@@ -128,7 +128,33 @@ export async function fetchTreeChildren(
 }
 
 /**
- * Strict variant for the post-transfer cache-lag snapshot: rejects on an SDK
+ * Run an Authoring GraphQL request and return its `data`, rejecting on an SDK
+ * error envelope (an HTTP failure that resolves instead of throwing) and on a
+ * GraphQL `errors` body. For callers where a silent empty result would be
+ * mistaken for a real one.
+ */
+async function authoringStrict(
+  client: ClientSDK,
+  contextId: string,
+  body: { query: string; variables?: Record<string, unknown> },
+  label: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const response = await client.mutate('xmc.authoring.graphql', {
+    params: { query: { sitecoreContextId: contextId }, body },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = response as any;
+  if (res?.error) {
+    throw new Error(`Authoring request failed while ${label}: ${JSON.stringify(res.error)}`);
+  }
+  const resData = res?.data;
+  assertGraphQLOk(resData, label);
+  return resData?.data;
+}
+
+/**
+ * Strict variant for the post-transfer stale-list snapshot: rejects on an SDK
  * error envelope, on GraphQL `errors`, and on a missing parent. A failed read
  * must be EXCLUDED from that check; the lenient [] would instead be reported
  * as "every pre-existing child is missing", which is the false alarm the check
@@ -139,20 +165,69 @@ export async function fetchTreeChildrenStrict(
   contextId: string,
   parentPath: string
 ): Promise<TreeNode[]> {
-  const response = await client.mutate('xmc.authoring.graphql', {
-    params: { query: { sitecoreContextId: contextId }, body: childrenQuery(parentPath) },
-  });
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = response as any;
-  if (res?.error) {
-    throw new Error(`Children fetch failed for ${parentPath}: ${JSON.stringify(res.error)}`);
-  }
-  const resData = res?.data;
-  assertGraphQLOk(resData, `fetching children of ${parentPath}`);
-  const item = resData?.data?.item;
+  const data = await authoringStrict(
+    client,
+    contextId,
+    childrenQuery(parentPath),
+    `fetching children of ${parentPath}`
+  );
+  const item = data?.item;
   if (!item) throw new Error(`Item not found: ${parentPath}`);
   return mapChildNodes(item.children?.nodes ?? []);
+}
+
+/** The `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}` form of an item id the Authoring API returns as 32 hex chars. */
+export function toBracedGuid(id: string): string {
+  const hex = id.replace(/[{}-]/g, '');
+  if (!/^[0-9a-fA-F]{32}$/.test(hex)) throw new Error(`Not an item id: ${id}`);
+  const h = hex.toUpperCase();
+  return `{${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}}`;
+}
+
+export interface ItemIdentity {
+  itemId: string;
+  name: string;
+}
+
+/**
+ * Reset a target item's stale cached child list by saving it with its CURRENT
+ * name. Why this works (Sitecore kernel, verified against 1.12.2 and live on
+ * 2026-11-03): the item name setter records the name property even when the
+ * value is unchanged; a property change makes the data layer drop the item's
+ * cached information, child list included; and an unchanged name raises no
+ * rename event, so descendants, paths and the index are untouched. Side effects
+ * stay on the item itself: an updated timestamp, one item:saved (index entry,
+ * links, publish queue, history) and a statistics bump on the current version.
+ * Strict: any failure rejects, nothing is retried.
+ */
+export async function repairChildList(
+  client: ClientSDK,
+  contextId: string,
+  itemPath: string
+): Promise<ItemIdentity> {
+  const found = await authoringStrict(
+    client,
+    contextId,
+    {
+      query: `query GetItemIdentity($path: String!) { item(where: { path: $path }) { itemId name } }`,
+      variables: { path: itemPath },
+    },
+    `looking up ${itemPath}`
+  );
+  const item = found?.item as ItemIdentity | null | undefined;
+  if (!item) throw new Error(`Item not found: ${itemPath}`);
+  // Values are inlined (JSON string syntax is valid GraphQL string syntax) so
+  // the call does not depend on the schema's input scalar types.
+  const renamed = await authoringStrict(
+    client,
+    contextId,
+    {
+      query: `mutation RenameToCurrentName { renameItem(input: { itemId: ${JSON.stringify(toBracedGuid(item.itemId))}, newName: ${JSON.stringify(item.name)} }) { item { itemId name } } }`,
+    },
+    `repairing the child list of ${itemPath}`
+  );
+  if (!renamed?.renameItem?.item) throw new Error(`Repair of ${itemPath} returned no item`);
+  return { itemId: item.itemId, name: item.name };
 }
 
 /**

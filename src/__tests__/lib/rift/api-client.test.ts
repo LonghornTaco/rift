@@ -6,6 +6,7 @@ import {
   zipDualTreeChildren,
   fetchDualTreeChildren,
   fetchItemFields,
+  repairChildList,
 } from '@/lib/rift/api-client';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TreeNode } from '@/lib/rift/types';
@@ -461,5 +462,39 @@ describe('fetchTreeChildrenStrict', () => {
       query: vi.fn(),
     } as unknown as ClientSDK;
     await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).rejects.toThrow(/503/);
+  });
+});
+
+describe('repairChildList', () => {
+  // A target parent whose cached child list went stale during a transfer is
+  // reset by saving it with its CURRENT name: the kernel records the name
+  // property even when unchanged, and a property change drops the item's cached
+  // information, while an unchanged name raises no rename event.
+  const identity = { item: { itemId: '01b8917bd36b4fb191ad017dfe055e55', name: 'Home' } };
+  const renamed = { renameItem: { item: { itemId: '01b8917bd36b4fb191ad017dfe055e55', name: 'Home' } } };
+
+  it('looks the item up by path and renames it to its current name', async () => {
+    const client = mockClientWithResponses([identity, renamed]);
+    const result = await repairChildList(client, 'ctx', '/sitecore/content/mcc/Home');
+    expect(result).toEqual({ itemId: '01b8917bd36b4fb191ad017dfe055e55', name: 'Home' });
+    const mutate = client.mutate as unknown as ReturnType<typeof vi.fn>;
+    expect(mutate).toHaveBeenCalledTimes(2);
+    const renameBody = mutate.mock.calls[1][1].params.body.query as string;
+    expect(renameBody).toContain('renameItem');
+    expect(renameBody).toContain('{01B8917B-D36B-4FB1-91AD-017DFE055E55}');
+    expect(renameBody).toContain('newName: "Home"');
+  });
+
+  it('rejects when the item does not exist on the target', async () => {
+    const client = mockClientWithResponses([{ item: null }]);
+    await expect(repairChildList(client, 'ctx', '/p')).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects when the rename comes back with GraphQL errors', async () => {
+    const mutate = vi.fn();
+    mutate.mockResolvedValueOnce({ data: { data: identity } });
+    mutate.mockResolvedValueOnce({ data: { errors: [{ message: 'Access denied' }] } });
+    const client = { mutate, query: vi.fn() } as unknown as ClientSDK;
+    await expect(repairChildList(client, 'ctx', '/p')).rejects.toThrow(/Access denied/);
   });
 });

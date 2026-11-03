@@ -19,6 +19,12 @@ interface RiftProgressOverlayProps {
   cacheLagNotices?: CacheLagNotice[];
   /** True when a path's target write went unconfirmed (timeout, cancel, or transport error); the tree was not refreshed. */
   targetStillWriting?: boolean;
+  /**
+   * Repair one flagged parent's listing on the target (save it under its
+   * current name so the target drops its cached child list) and re-read it.
+   * Rejects with a message the overlay shows next to that parent.
+   */
+  onRepairChildList?: (parentPath: string) => Promise<void>;
 }
 
 /** How long a row may sit in `finalizing` before the explanatory hint appears. */
@@ -47,12 +53,36 @@ export function RiftProgressOverlay({
   onCancel,
   cacheLagNotices = [],
   targetStillWriting = false,
+  onRepairChildList,
 }: RiftProgressOverlayProps) {
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
   const [debugAll, setDebugAll] = useState(false);
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
+  // Stale-list repair: the parent being repaired right now, and the last error per parent.
+  const [repairingPath, setRepairingPath] = useState<string | null>(null);
+  const [repairErrors, setRepairErrors] = useState<Record<string, string>>({});
+
+  async function runRepair(parentPath: string) {
+    if (!onRepairChildList || repairingPath) return;
+    setRepairingPath(parentPath);
+    setRepairErrors((errors) => {
+      const next = { ...errors };
+      delete next[parentPath];
+      return next;
+    });
+    try {
+      await onRepairChildList(parentPath);
+    } catch (err) {
+      setRepairErrors((errors) => ({
+        ...errors,
+        [parentPath]: err instanceof Error ? err.message : String(err),
+      }));
+    } finally {
+      setRepairingPath(null);
+    }
+  }
 
   useEffect(() => {
     if (isActive && !startTimeRef.current) {
@@ -173,9 +203,37 @@ export function RiftProgressOverlay({
             <div className="space-y-1">
               <p className="font-medium">The target is showing a stale child list</p>
               {cacheLagNotices.map((n) => (
-                <p key={n.parentPath}>
-                  {n.parentPath}: {n.missing.length} item(s) that existed before are no longer listed ({n.missing.join(', ')}). They are still in the database. The target cached this child list while the transfer was writing, and it will not correct itself. Clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All), then Refresh.
-                </p>
+                <div key={n.parentPath} className="space-y-1">
+                  <p>
+                    {n.parentPath}: {n.missing.length} item(s) that existed before are no longer listed ({n.missing.join(', ')}). They are still in the database. The target cached this child list while the transfer was writing, and it will not correct itself.
+                  </p>
+                  <div className="flex items-start gap-2 flex-wrap">
+                    {onRepairChildList && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs shrink-0"
+                        disabled={repairingPath !== null}
+                        onClick={() => runRepair(n.parentPath)}
+                      >
+                        {repairingPath === n.parentPath ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Repairing...
+                          </>
+                        ) : (
+                          'Repair listing'
+                        )}
+                      </Button>
+                    )}
+                    <span>
+                      Repair saves the item under its current name so the target re-reads its children; it bumps that one item&apos;s revision and updated timestamp. Alternatively clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All), then Refresh.
+                    </span>
+                  </div>
+                  {repairErrors[n.parentPath] && (
+                    <p className="text-red-700 dark:text-red-300">Repair failed: {repairErrors[n.parentPath]}</p>
+                  )}
+                </div>
               ))}
             </div>
           )}

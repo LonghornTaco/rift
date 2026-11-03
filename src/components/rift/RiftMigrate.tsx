@@ -16,11 +16,12 @@ import {
   DualTreeNode,
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
-import { fetchSites, fetchTreeChildrenStrict } from '@/lib/rift/api-client';
+import { fetchSites, fetchTreeChildrenStrict, repairChildList } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import {
   distinctSnapshotPaths,
   buildCacheLagNotices,
+  refreshCacheLagNotice,
   hasUnconfirmedTargetWrite,
   runStatus,
   type CacheLagNotice,
@@ -126,6 +127,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   // (a path's write went unconfirmed: timeout, cancel, or transport error).
   const [cacheLagNotices, setCacheLagNotices] = useState<CacheLagNotice[]>([]);
   const [targetStillWriting, setTargetStillWriting] = useState(false);
+  // The target child lists captured before the last run, kept so the repair
+  // action can re-compare a repaired parent against what it had.
+  const beforeSnapshotRef = useRef<Map<string, TreeNode[]>>(new Map());
 
   const [splitPercent, setSplitPercent] = useState(60);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
@@ -401,6 +405,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     // transfer. The root's own list is the one a SingleItem transfer empties.
     const snapshotPaths = distinctSnapshotPaths(paths.map((p) => p.itemPath));
     const before = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
+    beforeSnapshotRef.current = before;
 
     const transfers = paths.map((path, index) => {
       return transferPath(client, {
@@ -497,6 +502,21 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         setCacheLagNotices(buildCacheLagNotices(before, after));
       }
     }
+  }
+
+  /**
+   * Repair one flagged parent on the target: save it under its current name so
+   * the CM drops the stale cached child list, re-read it strictly, update the
+   * notice, and soft-refresh the tree. Errors propagate to the overlay.
+   */
+  async function handleRepairChildList(parentPath: string) {
+    const targetEnv = environments.find((e) => e.tenantId === selectedTargetEnvId);
+    if (!targetEnv) throw new Error('No target environment selected');
+    await repairChildList(client, targetEnv.contextId, parentPath);
+    const after = await fetchTreeChildrenStrict(client, targetEnv.contextId, parentPath);
+    const before = beforeSnapshotRef.current.get(parentPath) ?? [];
+    setCacheLagNotices((notices) => refreshCacheLagNotice(notices, parentPath, before, after));
+    setTreeSoftRefreshKey((k) => k + 1);
   }
 
   // --- Render ---
@@ -848,6 +868,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
                 transferProgress={transferProgress}
                 cacheLagNotices={cacheLagNotices}
                 targetStillWriting={targetStillWriting}
+                onRepairChildList={handleRepairChildList}
                 sourceEnvName={
                   environments.find((e) => e.tenantId === selectedSourceEnvId)?.tenantDisplayName
                 }

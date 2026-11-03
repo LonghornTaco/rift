@@ -4,6 +4,7 @@ import {
   distinctSnapshotPaths,
   findMissingChildren,
   buildCacheLagNotices,
+  refreshCacheLagNotice,
   hasUnconfirmedTargetWrite,
   runStatus,
 } from '@/lib/rift/post-transfer';
@@ -122,5 +123,28 @@ describe('distinctSnapshotPaths', () => {
 
   it('does not list a path twice when one selected root is the parent of another', () => {
     expect(distinctSnapshotPaths(['/a/b/c', '/a/b'])).toEqual(['/a/b', '/a/b/c', '/a']);
+  });
+});
+
+describe('refreshCacheLagNotice', () => {
+  const notices = [
+    { parentPath: '/a/Home', missing: ['about', 'ccoe'] },
+    { parentPath: '/a/Other', missing: ['x'] },
+  ];
+  const before = [node('1', 'about'), node('2', 'ccoe'), node('3', 'Data')];
+
+  it('drops the notice once every pre-existing child is listed again', () => {
+    const after = [node('3', 'Data'), node('1', 'about'), node('2', 'ccoe')];
+    expect(refreshCacheLagNotice(notices, '/a/Home', before, after)).toEqual([
+      { parentPath: '/a/Other', missing: ['x'] },
+    ]);
+  });
+
+  it('keeps the notice in place with the recomputed missing names when some are still absent', () => {
+    const after = [node('3', 'Data'), node('1', 'about')];
+    expect(refreshCacheLagNotice(notices, '/a/Home', before, after)).toEqual([
+      { parentPath: '/a/Home', missing: ['ccoe'] },
+      { parentPath: '/a/Other', missing: ['x'] },
+    ]);
   });
 });

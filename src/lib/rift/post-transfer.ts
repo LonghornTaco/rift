@@ -91,6 +91,25 @@ export function buildCacheLagNotices(
 }
 
 /**
+ * The notices after one flagged parent has been repaired and re-read: its
+ * notice is dropped when every pre-existing child is listed again, otherwise
+ * replaced in place with the recomputed missing names. Other notices are
+ * untouched.
+ */
+export function refreshCacheLagNotice(
+  notices: CacheLagNotice[],
+  parentPath: string,
+  before: TreeNode[],
+  after: TreeNode[]
+): CacheLagNotice[] {
+  const missing = findMissingChildren(before, after).map((n) => n.name);
+  return notices.flatMap((n) => {
+    if (n.parentPath !== parentPath) return [n];
+    return missing.length > 0 ? [{ parentPath, missing }] : [];
+  });
+}
+
+/**
  * True when this path's target write is unconfirmed: the target accepted the
  * file (the path reached `consuming` or `finalizing`) but Rift never saw
  * Transferred, and the target did not definitively reject it. That covers a
