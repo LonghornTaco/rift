@@ -9,6 +9,7 @@ import { Folder, File } from 'lucide-react';
 import { DriftPill } from './DriftPill';
 import {
   computeDriftRollup,
+  isUnderRoot,
   missingFolders,
   walkableChildPaths,
   type DriftRollup,
@@ -380,6 +381,9 @@ export function RiftContentTree({
   const onChildrenLoadedRef = useRef(onChildrenLoaded);
   onChildrenLoadedRef.current = onChildrenLoaded;
 
+  const walkRootsRef = useRef<string[]>([]);
+  walkRootsRef.current = walkRoots;
+
   const selectedPathSet = new Set(
     selectedPaths.map((p) => p.itemPath)
   );
@@ -694,7 +698,10 @@ export function RiftContentTree({
           setChildrenCache((prev) => new Map(prev).set(node.path, children));
           const sourceOnly = children.map((c) => c.source).filter((n): n is TreeNode => !!n);
           onChildrenLoadedRef.current?.(node.path, sourceOnly);
-          walkerRef.current?.enqueue(walkableChildPaths(children), 'front');
+          // Only folders beneath a walk root feed the walk; the roll-up never covers the rest.
+          if (isUnderRoot(node.path, walkRootsRef.current)) {
+            walkerRef.current?.enqueue(walkableChildPaths(children), 'front');
+          }
         } catch {
           // Silently handle
         } finally {

@@ -15,6 +15,11 @@ export function isWalkableFolder(node: DualTreeNode): boolean {
   return node.hasChildren && !!node.source && !!node.target;
 }
 
+/** True when the path is one of the roots or sits beneath one (a sibling sharing a name prefix does not count). */
+export function isUnderRoot(path: string, roots: readonly string[]): boolean {
+  return roots.some((root) => path === root || path.startsWith(root + '/'));
+}
+
 /** Paths of the children the walk may descend into, in listing order. */
 export function walkableChildPaths(children: readonly DualTreeNode[]): string[] {
   return children.filter(isWalkableFolder).map((c) => c.path);
@@ -84,7 +89,7 @@ export function evictSubtrees(
   cache: ReadonlyMap<string, DualTreeNode[]>,
   paths: readonly string[],
 ): Map<string, DualTreeNode[]> {
-  const matches = (key: string) => paths.some((p) => key === p || key.startsWith(p + '/'));
+  const matches = (key: string) => isUnderRoot(key, paths);
   if (![...cache.keys()].some(matches)) return cache as Map<string, DualTreeNode[]>;
   return new Map([...cache].filter(([key]) => !matches(key)));
 }

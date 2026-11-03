@@ -5,6 +5,7 @@ import {
   computeDriftRollup,
   missingFolders,
   evictSubtrees,
+  isUnderRoot,
 } from '@/lib/rift/drift-rollup';
 import type { DualTreeNode, TreeNode } from '@/lib/rift/types';
 
@@ -145,5 +146,15 @@ describe('evictSubtrees', () => {
   it('returns the same map when nothing matches', () => {
     const cache = new Map<string, DualTreeNode[]>([['/site/Home', []]]);
     expect(evictSubtrees(cache, ['/other'])).toBe(cache);
+  });
+});
+
+describe('isUnderRoot', () => {
+  it('matches a root and its descendants but not a sibling sharing the prefix or an empty root list', () => {
+    const roots = ['/site/Home'];
+    expect(isUnderRoot('/site/Home', roots)).toBe(true);
+    expect(isUnderRoot('/site/Home/About', roots)).toBe(true);
+    expect(isUnderRoot('/site/Homepage', roots)).toBe(false);
+    expect(isUnderRoot('/site/Home', [])).toBe(false);
   });
 });
