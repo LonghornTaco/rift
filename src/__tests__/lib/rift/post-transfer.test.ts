@@ -4,11 +4,11 @@ import {
   distinctParentPaths,
   findMissingChildren,
   buildCacheLagNotices,
-  hasFinalizingTimeout,
+  hasUnconfirmedTargetWrite,
   runStatus,
 } from '@/lib/rift/post-transfer';
-import type { TreeNode, TransferProgress } from '@/lib/rift/types';
-import { FINALIZING_TIMEOUT_PREFIX } from '@/lib/rift/types';
+import type { TreeNode, TransferPhase, TransferProgress } from '@/lib/rift/types';
+import { FINALIZING_TIMEOUT_PREFIX, CONSUME_REJECTED_PREFIX } from '@/lib/rift/types';
 
 const node = (itemId: string, name: string): TreeNode => ({
   itemId,
@@ -50,18 +50,51 @@ describe('buildCacheLagNotices', () => {
   });
 });
 
-describe('hasFinalizingTimeout / runStatus', () => {
+describe('hasUnconfirmedTargetWrite / runStatus', () => {
   const tp = (over: Partial<TransferProgress>): TransferProgress => ({
     itemPath: '/x',
     phase: 'complete',
     ...over,
   });
+  const ev = (...phases: TransferPhase[]) => phases.map((phase) => ({ timestamp: 1, phase }));
 
-  it('detects a finalizing timeout error', () => {
+  it('is true for a finalizing timeout', () => {
     expect(
-      hasFinalizingTimeout([tp({ phase: 'error', error: `${FINALIZING_TIMEOUT_PREFIX} (last state=Consumed)` })])
+      hasUnconfirmedTargetWrite([
+        tp({
+          phase: 'error',
+          error: `${FINALIZING_TIMEOUT_PREFIX} (last state=Consumed)`,
+          events: ev('creating', 'consuming', 'finalizing'),
+        }),
+      ])
     ).toBe(true);
-    expect(hasFinalizingTimeout([tp({ phase: 'error', error: 'boom' })])).toBe(false);
+  });
+
+  it('is true when cancelled or disconnected after the target accepted the file', () => {
+    expect(
+      hasUnconfirmedTargetWrite([
+        tp({ phase: 'error', error: 'This operation was aborted', events: ev('creating', 'consuming', 'finalizing') }),
+      ])
+    ).toBe(true);
+    expect(
+      hasUnconfirmedTargetWrite([
+        tp({ phase: 'error', error: 'getBlobState failed (503): {}', events: ev('creating', 'consuming') }),
+      ])
+    ).toBe(true);
+  });
+
+  it('is false when the target definitively rejected the file or the failure came before consume', () => {
+    expect(
+      hasUnconfirmedTargetWrite([
+        tp({ phase: 'error', error: `${CONSUME_REJECTED_PREFIX}Error): {}`, events: ev('creating', 'consuming') }),
+      ])
+    ).toBe(false);
+    expect(
+      hasUnconfirmedTargetWrite([
+        tp({ phase: 'error', error: 'This operation was aborted', events: ev('creating', 'uploading') }),
+      ])
+    ).toBe(false);
+    expect(hasUnconfirmedTargetWrite([tp({}), tp({})])).toBe(false);
   });
 
   it('is partial when one path carries a warning and the rest succeed', () => {

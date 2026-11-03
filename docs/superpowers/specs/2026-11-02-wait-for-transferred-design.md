@@ -132,6 +132,13 @@ Finalizing gets its own poll interval and ceiling, independent of the existing
 the intent is a few seconds between polls and a ceiling on the order of tens of
 minutes, well above the 10 minute export budget.
 
+The wait for the file to be accepted at all (blob states before `Consumed`)
+keeps its own ceiling of about ten minutes and times out with a plain
+consume-timeout message. The finalizing budget, and the "still finalizing"
+copy and gate that key off its message prefix, apply only once `Consumed` has
+been seen. (Clarified after review: the first implementation folded the two
+waits into one 40 minute budget.)
+
 On timeout the path ends in the existing `error` phase (my call: no new terminal
 phase; a timeout is an abnormal end because Rift could not confirm completion).
 What changes is the copy: `classifyError` gains a pattern for the finalizing
@@ -156,10 +163,17 @@ timeout its background job may still be writing, and a refresh at that moment
 is exactly the early read this design removes.
 
 So the refresh and the post-completion check (decision 6) are gated on "no
-path ended in a finalizing timeout". If any did, skip the automatic refresh
-entirely and show a notice that one or more items are still being written on
-the target and the tree should be refreshed later. The `Refresh` button remains
-available for that.
+path's target write is unconfirmed". A write is unconfirmed when the path
+reached the consume step (the target accepted the file) but ended in an error
+that is not a definitive target rejection: a finalizing timeout, a cancel
+after the file was submitted, or a transport error while polling. In all three
+the target's background job keeps running after Rift stops. (Revised after
+review: the first draft gated only on the timeout, which let a cancel during
+finalizing, the most likely cancel in a 40 minute window, trigger the early
+read.) If any path is unconfirmed, skip the automatic refresh entirely and show
+a notice that one or more items are still being written on the target and the
+tree should be refreshed later. The `Refresh` button remains available for
+that. A cancelled row in that state says so instead of "Migration failed".
 
 ### 6. Post-completion cache-lag check
 

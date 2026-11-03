@@ -1,5 +1,5 @@
 import type { TreeNode, TransferProgress } from './types';
-import { FINALIZING_TIMEOUT_PREFIX } from './types';
+import { CONSUME_REJECTED_PREFIX } from './types';
 
 /**
  * Pure helpers for what happens AFTER a migration run: deciding the run's
@@ -76,11 +76,27 @@ export function buildCacheLagNotices(
   return notices;
 }
 
-/** True when any path ended because the target was still finalizing (slow, not failed). */
-export function hasFinalizingTimeout(progress: TransferProgress[]): boolean {
-  return progress.some(
-    (p) => p.phase === 'error' && !!p.error && p.error.startsWith(FINALIZING_TIMEOUT_PREFIX)
+/**
+ * True when this path's target write is unconfirmed: the target accepted the
+ * file (the path reached `consuming` or `finalizing`) but Rift never saw
+ * Transferred, and the target did not definitively reject it. That covers a
+ * finalizing timeout, a cancel after the file was submitted, and a transport
+ * error while polling. In all of them the target's background job keeps
+ * running after Rift stops, so reading the tree now is exactly the early read
+ * that caches a transitional child list.
+ */
+export function wasTargetWriteUnconfirmed(p: TransferProgress): boolean {
+  if (p.phase !== 'error') return false;
+  const reachedTarget = (p.events ?? []).some(
+    (e) => e.phase === 'consuming' || e.phase === 'finalizing'
   );
+  if (!reachedTarget) return false;
+  return !(p.error ?? '').startsWith(CONSUME_REJECTED_PREFIX);
+}
+
+/** True when any path's target write is unconfirmed; the tree must not be refreshed. */
+export function hasUnconfirmedTargetWrite(progress: TransferProgress[]): boolean {
+  return progress.some(wasTargetWriteUnconfirmed);
 }
 
 export type RunStatus = 'success' | 'partial' | 'failed';

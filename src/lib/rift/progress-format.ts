@@ -1,5 +1,6 @@
 import type { TransferProgress } from './types';
 import { FINALIZING_TIMEOUT_PREFIX } from './types';
+import { wasTargetWriteUnconfirmed } from './post-transfer';
 
 export type MigrationStage = 'Prepare' | 'Package' | 'Transfer' | 'Import' | 'Done' | 'Failed';
 
@@ -20,6 +21,10 @@ export interface FormattedProgress {
 }
 
 const CORS_PATTERN = /cors|access-control|preflight|method (put|delete)/i;
+const ABORT_PATTERN = /abort/i;
+
+const CANCELLED_WHILE_WRITING_COPY =
+  'Cancelled while the target was still writing. Items it already accepted will still land; refresh the tree later.';
 
 /**
  * Turn a raw transfer error message into human-readable copy. The raw message
@@ -88,8 +93,18 @@ export function formatProgress(tp: TransferProgress, envs: ProgressEnvNames = {}
         percent: 100,
         state: 'complete',
       };
-    case 'error':
-      return { stage: 'Failed', statusLine: classifyError(tp.error), percent: percentFor(tp), state: 'error' };
+    case 'error': {
+      // A cancel after the target accepted the file is not a failed migration:
+      // the target keeps writing and the items will land. Say so instead of
+      // "Migration failed for this item", which would be untrue.
+      const cancelledWhileWriting = wasTargetWriteUnconfirmed(tp) && ABORT_PATTERN.test(tp.error ?? '');
+      return {
+        stage: 'Failed',
+        statusLine: cancelledWhileWriting ? CANCELLED_WHILE_WRITING_COPY : classifyError(tp.error),
+        percent: percentFor(tp),
+        state: 'error',
+      };
+    }
     default:
       return { stage: 'Prepare', statusLine: 'Working...', percent: null, state: 'active' };
   }

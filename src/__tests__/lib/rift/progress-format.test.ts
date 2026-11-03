@@ -43,6 +43,23 @@ describe('formatProgress', () => {
     expect(r.percent).toBe(17);
   });
 
+  it('explains a cancel that happened while the target was still writing', () => {
+    const r = formatProgress(
+      base({
+        phase: 'error',
+        error: 'This operation was aborted',
+        events: [
+          { timestamp: 1, phase: 'consuming' },
+          { timestamp: 2, phase: 'finalizing' },
+        ],
+      })
+    );
+    expect(r.state).toBe('error');
+    expect(r.statusLine).toBe(
+      'Cancelled while the target was still writing. Items it already accepted will still land; refresh the tree later.'
+    );
+  });
+
   it('omits the chunk suffix and percent when counts are unknown', () => {
     const r = formatProgress(base({ phase: 'downloading' }));
     expect(r.statusLine).toBe('Downloading content');

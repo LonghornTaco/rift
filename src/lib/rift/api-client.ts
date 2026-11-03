@@ -56,15 +56,17 @@ export function zipDualTreeChildren(
   return paired;
 }
 
-/**
- * Fetch children of a tree node via Authoring GraphQL API.
- */
-export async function fetchTreeChildren(
-  client: ClientSDK,
-  contextId: string,
-  parentPath: string
-): Promise<TreeNode[]> {
-  const query = {
+type RawChildNode = {
+  itemId: string;
+  name: string;
+  path: string;
+  hasChildren: boolean;
+  template: { name: string };
+  updated?: { value?: string } | null;
+};
+
+function childrenQuery(parentPath: string) {
+  return {
     query: `query GetChildren($path: String!) {
       item(where: { path: $path }) {
         children { nodes { itemId name path hasChildren template { name } updated: field(name: "__Updated") { value } } }
@@ -72,35 +74,85 @@ export async function fetchTreeChildren(
     }`,
     variables: { path: parentPath },
   };
+}
 
+function mapChildNodes(nodes: RawChildNode[]): TreeNode[] {
+  return nodes.map((n) => {
+    const mapped: TreeNode = {
+      itemId: n.itemId,
+      name: n.name,
+      path: n.path,
+      hasChildren: n.hasChildren,
+      templateName: n.template?.name ?? '',
+    };
+    const updatedValue = n.updated?.value;
+    if (updatedValue) mapped.updated = updatedValue;
+    return mapped;
+  });
+}
+
+/**
+ * Throw when a GraphQL response body carries `errors`. Sitecore answers HTTP
+ * 200 with an `errors` array on execution failures (timeouts included), so a
+ * caller that only reads `data` would mistake a failed query for an empty one.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function assertGraphQLOk(resData: any, label: string): void {
+  const errors = resData?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    throw new Error(
+      `GraphQL error ${label}: ${errors.map((e: { message?: string }) => e?.message ?? 'unknown').join('; ')}`
+    );
+  }
+}
+
+/**
+ * Fetch children of a tree node via Authoring GraphQL API.
+ *
+ * Lenient: any failure (transport, GraphQL errors, missing item) yields [] so
+ * the tree degrades gracefully. Use fetchTreeChildrenStrict wherever an empty
+ * list must not be mistaken for "no children".
+ */
+export async function fetchTreeChildren(
+  client: ClientSDK,
+  contextId: string,
+  parentPath: string
+): Promise<TreeNode[]> {
   const response = await client.mutate('xmc.authoring.graphql', {
-    params: { query: { sitecoreContextId: contextId }, body: query },
+    params: { query: { sitecoreContextId: contextId }, body: childrenQuery(parentPath) },
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resData = response.data as any;
-  const nodes = resData?.data?.item?.children?.nodes ?? [];
-  return nodes.map(
-    (n: {
-      itemId: string;
-      name: string;
-      path: string;
-      hasChildren: boolean;
-      template: { name: string };
-      updated?: { value?: string } | null;
-    }) => {
-      const mapped: TreeNode = {
-        itemId: n.itemId,
-        name: n.name,
-        path: n.path,
-        hasChildren: n.hasChildren,
-        templateName: n.template?.name ?? '',
-      };
-      const updatedValue = n.updated?.value;
-      if (updatedValue) mapped.updated = updatedValue;
-      return mapped;
-    },
-  );
+  return mapChildNodes(resData?.data?.item?.children?.nodes ?? []);
+}
+
+/**
+ * Strict variant for the post-transfer cache-lag snapshot: rejects on an SDK
+ * error envelope, on GraphQL `errors`, and on a missing parent. A failed read
+ * must be EXCLUDED from that check; the lenient [] would instead be reported
+ * as "every pre-existing child is missing", which is the false alarm the check
+ * exists to avoid.
+ */
+export async function fetchTreeChildrenStrict(
+  client: ClientSDK,
+  contextId: string,
+  parentPath: string
+): Promise<TreeNode[]> {
+  const response = await client.mutate('xmc.authoring.graphql', {
+    params: { query: { sitecoreContextId: contextId }, body: childrenQuery(parentPath) },
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = response as any;
+  if (res?.error) {
+    throw new Error(`Children fetch failed for ${parentPath}: ${JSON.stringify(res.error)}`);
+  }
+  const resData = res?.data;
+  assertGraphQLOk(resData, `fetching children of ${parentPath}`);
+  const item = resData?.data?.item;
+  if (!item) throw new Error(`Item not found: ${parentPath}`);
+  return mapChildNodes(item.children?.nodes ?? []);
 }
 
 /**
@@ -221,10 +273,7 @@ export async function fetchItemFields(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resData = response.data as any;
-  const errors = resData?.errors;
-  if (Array.isArray(errors) && errors.length > 0) {
-    throw new Error(`GraphQL error fetching fields for ${itemPath}: ${errors.map((e: { message?: string }) => e?.message ?? 'unknown').join('; ')}`);
-  }
+  assertGraphQLOk(resData, `fetching fields for ${itemPath}`);
 
   const item = resData?.data?.item;
   if (!item) throw new Error(`Item not found: ${itemPath}`);

@@ -16,12 +16,12 @@ import {
   DualTreeNode,
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
-import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
+import { fetchSites, fetchTreeChildrenStrict } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import {
   distinctParentPaths,
   buildCacheLagNotices,
-  hasFinalizingTimeout,
+  hasUnconfirmedTargetWrite,
   runStatus,
   type CacheLagNotice,
 } from '@/lib/rift/post-transfer';
@@ -73,8 +73,10 @@ interface RiftMigrateProps {
  * Fetch the target's current children for each parent, keeping only the
  * parents whose fetch succeeded. Taken before and after a run to detect a
  * target whose cached child list has not caught up (see post-transfer.ts).
- * One call per distinct parent of the selected roots, never per item. Never
- * throws: a failed fetch just drops that parent from the check.
+ * One call per distinct parent of the selected roots, never per item. Uses the
+ * STRICT fetch so a transport failure, a GraphQL error body, or a missing
+ * parent rejects and drops that parent from the check; the lenient fetch's []
+ * would be reported as every child missing. Never throws itself.
  */
 async function snapshotParents(
   client: ClientSDK,
@@ -82,7 +84,7 @@ async function snapshotParents(
   parents: string[]
 ): Promise<Map<string, TreeNode[]>> {
   const results = await Promise.allSettled(
-    parents.map((parentPath) => fetchTreeChildren(client, contextId, parentPath))
+    parents.map((parentPath) => fetchTreeChildrenStrict(client, contextId, parentPath))
   );
   const snapshot = new Map<string, TreeNode[]>();
   results.forEach((r, i) => {
@@ -119,9 +121,10 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   const [migrationComplete, setMigrationComplete] = useState(false);
   const [transferProgress, setTransferProgress] = useState<TransferProgress[]>([]);
   // Post-run findings for the overlay: parents whose target child list lost
-  // pre-existing items (cache lag), and whether any path timed out finalizing.
+  // pre-existing items (cache lag), and whether the target may still be writing
+  // (a path's write went unconfirmed: timeout, cancel, or transport error).
   const [cacheLagNotices, setCacheLagNotices] = useState<CacheLagNotice[]>([]);
-  const [finalizingTimedOut, setFinalizingTimedOut] = useState(false);
+  const [targetStillWriting, setTargetStillWriting] = useState(false);
 
   const [splitPercent, setSplitPercent] = useState(60);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
@@ -374,7 +377,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     setIsMigrating(true);
     setMigrationComplete(false);
     setCacheLagNotices([]);
-    setFinalizingTimedOut(false);
+    setTargetStillWriting(false);
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const startTime = Date.now();
@@ -472,14 +475,16 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
       // Refresh the content tree so the target side reflects what was just
       // migrated, but ONLY once every path has truly finished on the target.
-      // A path that timed out while finalizing may still be writing; reading
-      // the tree then caches a transitional child list on the CM and makes the
+      // If any path's write went unconfirmed (finalizing timeout, a cancel
+      // after the target accepted the file, or a transport error while
+      // polling) the target's background job is still running; reading the
+      // tree then caches a transitional child list on the CM and makes the
       // migration look like it deleted items. In that case skip the refresh
       // and tell the user to refresh later. Uses the soft key so the user's
       // expanded tree state is preserved.
-      const timedOut = hasFinalizingTimeout(progress);
-      setFinalizingTimedOut(timedOut);
-      if (!timedOut && progress.some((p) => p.phase === 'complete')) {
+      const stillWriting = hasUnconfirmedTargetWrite(progress);
+      setTargetStillWriting(stillWriting);
+      if (!stillWriting && progress.some((p) => p.phase === 'complete')) {
         setTreeSoftRefreshKey((k) => k + 1);
         // Cache-lag check: every child a snapshotted parent had before the run
         // must still be listed after it, because the merge strategy Rift sends
@@ -838,7 +843,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
                 isActive={isMigrating}
                 transferProgress={transferProgress}
                 cacheLagNotices={cacheLagNotices}
-                finalizingTimedOut={finalizingTimedOut}
+                targetStillWriting={targetStillWriting}
                 sourceEnvName={
                   environments.find((e) => e.tenantId === selectedSourceEnvId)?.tenantDisplayName
                 }

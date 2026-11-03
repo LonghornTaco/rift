@@ -71,6 +71,14 @@ export const DEFAULT_SETTINGS: RiftSettings = {
  */
 export const FINALIZING_TIMEOUT_PREFIX = 'Target is still finalizing';
 
+/**
+ * Prefix of the error thrown when the target definitively rejected a file
+ * (BlobState Error, ValidationFailed, Discarded, NotFound). Lets the run-level
+ * summary tell "the target said no" apart from "we lost track of the target
+ * while it was still writing", which needs the opposite handling.
+ */
+export const CONSUME_REJECTED_PREFIX = 'Consume failed (state=';
+
 export interface MigrationHistoryEntry {
   id: string;
   date: string;

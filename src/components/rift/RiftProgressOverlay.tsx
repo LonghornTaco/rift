@@ -17,8 +17,8 @@ interface RiftProgressOverlayProps {
   onCancel?: () => void;
   /** Parents whose target child list lost pre-existing items after the run (cache lag). */
   cacheLagNotices?: CacheLagNotice[];
-  /** True when a path timed out while the target was still writing; the tree was not refreshed. */
-  finalizingTimedOut?: boolean;
+  /** True when a path's target write went unconfirmed (timeout, cancel, or transport error); the tree was not refreshed. */
+  targetStillWriting?: boolean;
 }
 
 /** How long a row may sit in `finalizing` before the explanatory hint appears. */
@@ -46,7 +46,7 @@ export function RiftProgressOverlay({
   onClose,
   onCancel,
   cacheLagNotices = [],
-  finalizingTimedOut = false,
+  targetStillWriting = false,
 }: RiftProgressOverlayProps) {
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -162,9 +162,9 @@ export function RiftProgressOverlay({
       </div>
 
       {/* Post-run notices: only once everything has settled. */}
-      {isComplete && (finalizingTimedOut || cacheLagNotices.length > 0) && (
+      {isComplete && (targetStillWriting || cacheLagNotices.length > 0) && (
         <div className="px-4 py-2 border-b border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/60 text-xs text-amber-900 dark:text-amber-100 space-y-1 shrink-0">
-          {finalizingTimedOut && (
+          {targetStillWriting && (
             <p>
               One or more items are still being written on the target. The tree was not refreshed; use Refresh once the target finishes.
             </p>

@@ -1,6 +1,6 @@
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TransferPhase } from './types';
-import { FINALIZING_TIMEOUT_PREFIX } from './types';
+import { FINALIZING_TIMEOUT_PREFIX, CONSUME_REJECTED_PREFIX } from './types';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 300; // 10 minutes
@@ -14,12 +14,16 @@ const MAX_POLL_ATTEMPTS = 300; // 10 minutes
  */
 export interface FinalizePolling {
   intervalMs: number;
+  /** Ceiling once the blob has reached Consumed (the background write). */
   maxAttempts: number;
+  /** Ceiling for the blob to be accepted at all (states before Consumed). */
+  consumeMaxAttempts: number;
 }
 
 export const DEFAULT_FINALIZE_POLLING: FinalizePolling = {
   intervalMs: 3000,
-  maxAttempts: 800, // 40 minutes
+  maxAttempts: 800, // 40 minutes of finalizing
+  consumeMaxAttempts: 200, // 10 minutes to be accepted, like the export budget
 };
 
 export interface TransferResult {
@@ -292,6 +296,13 @@ const BLOB_FAILURE_STATES = new Set(['Error', 'Failed', 'ValidationFailed', 'Dis
  * keeps polling and is surfaced as the phase detail rather than being treated
  * as done, so a new state can never make Rift report completion early.
  *
+ * Two budgets: until the blob first reads Consumed the wait is the "consume"
+ * step with its own ten-minute ceiling and a plain consume-timeout error; once
+ * Consumed has been seen the counter restarts against the (much larger)
+ * finalizing ceiling, and only that timeout carries FINALIZING_TIMEOUT_PREFIX,
+ * so the "still finalizing" copy and the run-level gate never apply to a file
+ * the target never accepted.
+ *
  * Resolves with a warning string for TransferredWithErrors (the items that did
  * transfer are in the database), undefined for Transferred.
  */
@@ -304,7 +315,9 @@ async function pollBlobState(
   signal?: AbortSignal
 ): Promise<string | undefined> {
   let lastState = '';
-  for (let attempt = 0; attempt < finalize.maxAttempts; attempt++) {
+  let consumedSeen = false;
+  let attempts = 0;
+  for (;;) {
     signal?.throwIfAborted();
     const result = await client.query('xmc.contentTransfer.getBlobState', {
       params: { query: { fileName, sitecoreContextId: contextId } },
@@ -323,16 +336,29 @@ async function pollBlobState(
     }
     if (BLOB_FAILURE_STATES.has(state)) {
       throw new Error(
-        `Consume failed (state=${state}): ${JSON.stringify(body?.details ?? body?.Error ?? body)}`
+        `${CONSUME_REJECTED_PREFIX}${state}): ${JSON.stringify(body?.details ?? body?.Error ?? body)}`
       );
     }
-    // Consumed = accepted, background write in progress. Everything else
-    // (Unknown, Uploading, Uploaded, Initializing, or an unrecognised token) is
-    // still the consume step.
-    report(state === 'Consumed' ? 'finalizing' : 'consuming', state);
+    if (state === 'Consumed' && !consumedSeen) {
+      // The file has been accepted; from here the clock is the finalizing budget.
+      consumedSeen = true;
+      attempts = 0;
+    }
+    attempts++;
+    // Before Consumed (Unknown, Uploading, Uploaded, Initializing, or an
+    // unrecognised token) this is still the consume step; after it, the
+    // background write is in progress.
+    report(consumedSeen ? 'finalizing' : 'consuming', state);
+    const limit = consumedSeen ? finalize.maxAttempts : finalize.consumeMaxAttempts;
+    if (attempts >= limit) {
+      throw new Error(
+        consumedSeen
+          ? `${FINALIZING_TIMEOUT_PREFIX} (last state=${lastState})`
+          : `Content consume timed out (last state=${lastState})`
+      );
+    }
     await delay(finalize.intervalMs);
   }
-  throw new Error(`${FINALIZING_TIMEOUT_PREFIX} (last state=${lastState})`);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

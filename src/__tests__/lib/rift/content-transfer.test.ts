@@ -208,6 +208,34 @@ describe('transferPath', () => {
     ).rejects.toThrow(FINALIZING_TIMEOUT_PREFIX);
   });
 
+  it('times out with the consume message, not the finalizing one, when the blob never reaches Consumed', async () => {
+    const { client } = createMockClient({ blobStates: ['Uploaded'] });
+    const run = transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0, consumeMaxAttempts: 2 },
+    });
+    await expect(run).rejects.toThrow(/Content consume timed out/);
+    await expect(run).rejects.not.toThrow(FINALIZING_TIMEOUT_PREFIX);
+  });
+
+  it('resets the budget once Consumed is seen so the finalizing ceiling applies from there', async () => {
+    const { client } = createMockClient({
+      blobStates: ['Uploaded', 'Uploaded', 'Consumed', 'Consumed', 'Consumed', 'Transferred'],
+    });
+    await expect(
+      transferPath(client, {
+        sourceContextId: 'src-ctx',
+        targetContextId: 'tgt-ctx',
+        itemPath: '/sitecore/content/Home',
+        scope: 'SingleItem',
+        finalizePolling: { intervalMs: 0, consumeMaxAttempts: 3, maxAttempts: 4 },
+      })
+    ).resolves.toEqual({});
+  });
+
   it('treats TransferredWithErrors as complete with a warning', async () => {
     const { client } = createMockClient({ blobStates: ['Consumed', 'TransferredWithErrors'] });
     const phases: TransferPhase[] = [];

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchTreeChildren, fetchSites, zipDualTreeChildren, fetchDualTreeChildren, fetchItemFields } from '@/lib/rift/api-client';
+import {
+  fetchTreeChildren,
+  fetchTreeChildrenStrict,
+  fetchSites,
+  zipDualTreeChildren,
+  fetchDualTreeChildren,
+  fetchItemFields,
+} from '@/lib/rift/api-client';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TreeNode } from '@/lib/rift/types';
 
@@ -417,5 +424,42 @@ describe('fetchItemFields', () => {
     const call = mutate.mock.calls[0][1];
     expect(call.params.body.query).toContain('excludeStandardFields: false');
     expect(call.params.body.query).toContain('ownFields: false');
+  });
+});
+
+describe('fetchTreeChildrenStrict', () => {
+  // The lenient fetchTreeChildren turns any failure into [] so the tree degrades
+  // gracefully. The strict variant exists for the post-transfer snapshot, where
+  // a silent [] would be reported as "every pre-existing child is missing".
+  const okBody = {
+    item: { children: { nodes: [{ itemId: 'id1', name: 'a', path: '/p/a', hasChildren: false, template: { name: 'T' } }] } },
+  };
+
+  it('returns nodes on a clean response, like the lenient fetch', async () => {
+    const client = mockClient(okBody);
+    await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).resolves.toHaveLength(1);
+  });
+
+  it('rejects when the GraphQL body carries errors instead of silently returning []', async () => {
+    const client = {
+      mutate: vi.fn().mockResolvedValue({ data: { errors: [{ message: 'Execution timeout' }] } }),
+      query: vi.fn(),
+    } as unknown as ClientSDK;
+    await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).rejects.toThrow(/Execution timeout/);
+    // ...while the lenient fetch keeps its graceful [] for the tree.
+    await expect(fetchTreeChildren(client, 'ctx', '/p')).resolves.toEqual([]);
+  });
+
+  it('rejects when the parent item does not exist', async () => {
+    const client = mockClient({ item: null });
+    await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects on an SDK error envelope (HTTP failure that resolves instead of throwing)', async () => {
+    const client = {
+      mutate: vi.fn().mockResolvedValue({ error: { message: 'HTTP 503' }, data: undefined }),
+      query: vi.fn(),
+    } as unknown as ClientSDK;
+    await expect(fetchTreeChildrenStrict(client, 'ctx', '/p')).rejects.toThrow(/503/);
   });
 });
