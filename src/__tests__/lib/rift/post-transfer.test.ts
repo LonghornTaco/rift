@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parentPathOf,
-  distinctParentPaths,
+  distinctSnapshotPaths,
   findMissingChildren,
   buildCacheLagNotices,
   hasUnconfirmedTargetWrite,
@@ -18,12 +18,11 @@ const node = (itemId: string, name: string): TreeNode => ({
   templateName: 'T',
 });
 
-describe('parentPathOf / distinctParentPaths', () => {
+describe('parentPathOf', () => {
   it('returns the parent and skips roots', () => {
     expect(parentPathOf('/sitecore/content/mcc/Home')).toBe('/sitecore/content/mcc');
     expect(parentPathOf('/sitecore')).toBe('');
     expect(parentPathOf('Home')).toBe('');
-    expect(distinctParentPaths(['/a/b/c', '/a/b/d', '/sitecore', '/a/b/c'])).toEqual(['/a/b']);
   });
 });
 
@@ -105,5 +104,23 @@ describe('hasUnconfirmedTargetWrite / runStatus', () => {
     expect(runStatus([tp({ phase: 'error', error: 'x' }), tp({ phase: 'error', error: 'y' })])).toBe('failed');
     expect(runStatus([tp({ phase: 'error', error: 'x' }), tp({})])).toBe('partial');
     expect(runStatus([tp({}), tp({})])).toBe('success');
+  });
+});
+
+describe('distinctSnapshotPaths', () => {
+  it('snapshots each selected root itself as well as its parent, once each, roots of the tree skipped', () => {
+    // A SingleItem transfer of a parent that already exists on the target is the
+    // case that empties the parent's own cached child list, so the root's own
+    // children must be in the before/after comparison, not only the parent's.
+    expect(distinctSnapshotPaths(['/a/b/c', '/a/b/d', '/sitecore', '/a/b/c'])).toEqual([
+      '/a/b',
+      '/a/b/c',
+      '/a/b/d',
+      '/sitecore',
+    ]);
+  });
+
+  it('does not list a path twice when one selected root is the parent of another', () => {
+    expect(distinctSnapshotPaths(['/a/b/c', '/a/b'])).toEqual(['/a/b', '/a/b/c', '/a']);
   });
 });

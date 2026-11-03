@@ -19,7 +19,7 @@ import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } fr
 import { fetchSites, fetchTreeChildrenStrict } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
 import {
-  distinctParentPaths,
+  distinctSnapshotPaths,
   buildCacheLagNotices,
   hasUnconfirmedTargetWrite,
   runStatus,
@@ -70,25 +70,26 @@ interface RiftMigrateProps {
 }
 
 /**
- * Fetch the target's current children for each parent, keeping only the
- * parents whose fetch succeeded. Taken before and after a run to detect a
- * target whose cached child list has not caught up (see post-transfer.ts).
- * One call per distinct parent of the selected roots, never per item. Uses the
- * STRICT fetch so a transport failure, a GraphQL error body, or a missing
- * parent rejects and drops that parent from the check; the lenient fetch's []
- * would be reported as every child missing. Never throws itself.
+ * Fetch the target's current children for each snapshotted path (each selected
+ * root and its parent), keeping only the paths whose fetch succeeded. Taken
+ * before and after a run to detect a target whose cached child list was
+ * captured mid-transfer (see post-transfer.ts). One call per distinct path,
+ * never per item. Uses the STRICT fetch so a transport failure, a GraphQL
+ * error body, or a missing item rejects and drops that path from the check;
+ * the lenient fetch's [] would be reported as every child missing. Never
+ * throws itself.
  */
-async function snapshotParents(
+async function snapshotChildLists(
   client: ClientSDK,
   contextId: string,
-  parents: string[]
+  paths: string[]
 ): Promise<Map<string, TreeNode[]>> {
   const results = await Promise.allSettled(
-    parents.map((parentPath) => fetchTreeChildrenStrict(client, contextId, parentPath))
+    paths.map((path) => fetchTreeChildrenStrict(client, contextId, path))
   );
   const snapshot = new Map<string, TreeNode[]>();
   results.forEach((r, i) => {
-    if (r.status === 'fulfilled') snapshot.set(parents[i], r.value);
+    if (r.status === 'fulfilled') snapshot.set(paths[i], r.value);
   });
   return snapshot;
 }
@@ -394,11 +395,12 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
     const settings = getSettings();
 
-    // Snapshot the target's children under each selected root's parent before
-    // anything is written, so the post-run check can tell cache lag (a
-    // pre-existing child no longer listed) apart from a healthy transfer.
-    const parents = distinctParentPaths(paths.map((p) => p.itemPath));
-    const before = await snapshotParents(client, targetEnv.contextId, parents);
+    // Snapshot the target's children under each selected root AND its parent
+    // before anything is written, so the post-run check can tell a stale cached
+    // child list (a pre-existing child no longer listed) apart from a healthy
+    // transfer. The root's own list is the one a SingleItem transfer empties.
+    const snapshotPaths = distinctSnapshotPaths(paths.map((p) => p.itemPath));
+    const before = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
 
     const transfers = paths.map((path, index) => {
       return transferPath(client, {
@@ -486,10 +488,12 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       setTargetStillWriting(stillWriting);
       if (!stillWriting && progress.some((p) => p.phase === 'complete')) {
         setTreeSoftRefreshKey((k) => k + 1);
-        // Cache-lag check: every child a snapshotted parent had before the run
+        // Stale-cache check: every child a snapshotted path had before the run
         // must still be listed after it, because the merge strategy Rift sends
-        // never deletes. Anything missing is the target's cache, not data loss.
-        const after = await snapshotParents(client, targetEnv.contextId, parents);
+        // never deletes. Anything missing is the target's cache, not data loss,
+        // and it does not correct itself (the transfer job's completion skips
+        // the cache clear), so the notice tells the user to clear caches.
+        const after = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
         setCacheLagNotices(buildCacheLagNotices(before, after));
       }
     }

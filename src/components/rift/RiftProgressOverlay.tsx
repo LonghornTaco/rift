@@ -15,7 +15,7 @@ interface RiftProgressOverlayProps {
   targetEnvName?: string;
   onClose: () => void;
   onCancel?: () => void;
-  /** Parents whose target child list lost pre-existing items after the run (cache lag). */
+  /** Target items whose cached child list lost pre-existing children during the run (stale cache, not data loss). */
   cacheLagNotices?: CacheLagNotice[];
   /** True when a path's target write went unconfirmed (timeout, cancel, or transport error); the tree was not refreshed. */
   targetStillWriting?: boolean;
@@ -171,10 +171,10 @@ export function RiftProgressOverlay({
           )}
           {cacheLagNotices.length > 0 && (
             <div className="space-y-1">
-              <p className="font-medium">Target tree may be lagging</p>
+              <p className="font-medium">The target is showing a stale child list</p>
               {cacheLagNotices.map((n) => (
                 <p key={n.parentPath}>
-                  {n.parentPath}: {n.missing.length} item(s) that existed before are not listed ({n.missing.join(', ')}). They are still in the database; the target environment&apos;s cache has not caught up. Clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All) or wait, then Refresh.
+                  {n.parentPath}: {n.missing.length} item(s) that existed before are no longer listed ({n.missing.join(', ')}). They are still in the database. The target cached this child list while the transfer was writing, and it will not correct itself. Clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All), then Refresh.
                 </p>
               ))}
             </div>

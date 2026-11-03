@@ -3,15 +3,18 @@ import { CONSUME_REJECTED_PREFIX } from './types';
 
 /**
  * Pure helpers for what happens AFTER a migration run: deciding the run's
- * status, choosing which target parents to snapshot, and detecting a target
+ * status, choosing which target paths to snapshot, and detecting a target
  * whose cached child list has not caught up with its database.
  *
- * Why the snapshot exists: the target CM caches each parent's child list. If
- * anything reads a parent while a transfer's background job is still writing
- * under it, that transitional list can be cached and the tree then looks as if
- * items were deleted. Rift no longer reads before the job finishes, but an open
- * Content Editor can. Because the merge strategy Rift sends never deletes, every
- * child that existed under a parent before the run must still be listed after
+ * Why the snapshot exists: the target CM caches each item's child list. While
+ * the transfer job rewrites an item that already exists on the target it holds
+ * a per-item lock, and under that lock the item's children evaluate to only the
+ * ones carried by the transfer. Anything that reads the list in that window
+ * (the CM's own save handlers are enough) caches it, and the job's completion
+ * does not clear it, so the tree then looks as if items were deleted. Waiting
+ * for Transferred cannot prevent that; only a cache clear on the target fixes
+ * it. Because the merge strategy Rift sends never deletes, every child that
+ * existed under a snapshotted path before the run must still be listed after
  * it; anything that is not is cache lag, not data loss.
  *
  * Everything here is SDK-free so it is unit-testable; the fetches live in the
@@ -25,17 +28,28 @@ export function parentPathOf(itemPath: string): string {
   return itemPath.slice(0, idx);
 }
 
-/** Unique parents of the given paths, in first-seen order, roots skipped. */
-export function distinctParentPaths(itemPaths: string[]): string[] {
+/** Unique non-empty paths, in first-seen order. */
+function distinctPaths(paths: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const p of itemPaths) {
-    const parent = parentPathOf(p);
-    if (!parent || seen.has(parent)) continue;
-    seen.add(parent);
-    out.push(parent);
+  for (const p of paths) {
+    if (!p || seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
   }
   return out;
+}
+
+/**
+ * The target paths whose child lists are compared before and after a run:
+ * each selected root's parent AND the root itself, each once, in first-seen
+ * order. The root's own list is the one at risk: a SingleItem transfer of a
+ * parent that already exists on the target empties that parent's cached child
+ * list (see the module comment), and the parent's parent only catches the case
+ * where the root itself disappears from view.
+ */
+export function distinctSnapshotPaths(itemPaths: string[]): string[] {
+  return distinctPaths(itemPaths.flatMap((p) => [parentPathOf(p), p]));
 }
 
 /**
