@@ -69,6 +69,7 @@ describe('transferPath', () => {
       targetContextId: 'tgt-ctx',
       itemPath: '/sitecore/content/Home',
       scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0 },
       onProgress: (phase) => phases.push(phase),
     });
 
@@ -146,6 +147,7 @@ describe('transferPath', () => {
           targetContextId: 'tgt-ctx',
           itemPath,
           scope: 'ItemAndDescendants',
+          finalizePolling: { intervalMs: 0 },
         })
       )
     );
@@ -162,6 +164,7 @@ describe('transferPath', () => {
       targetContextId: 'tgt-ctx',
       itemPath: '/sitecore/content/Home',
       scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0 },
       onProgress: (phase) => phases.push(phase),
     });
 
