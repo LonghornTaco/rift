@@ -10,3 +10,5 @@ tsconfig.tsbuildinfo
 sbom.json
 .worktrees/
 resume-prompt.md
+backlog.md
+backlog-archive.md
