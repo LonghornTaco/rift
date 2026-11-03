@@ -1,8 +1,31 @@
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TransferPhase } from './types';
+import { FINALIZING_TIMEOUT_PREFIX } from './types';
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 300; // 10 minutes
+
+/**
+ * Polling budget for the finalizing phase: after consumeFile the target runs a
+ * background job that writes the items into its database, and the blob only
+ * reaches BlobState Transferred when that job finishes. One item with many
+ * versions can take minutes, and the target processes jobs one at a time, so
+ * this budget is separate from and much larger than MAX_POLL_ATTEMPTS.
+ */
+export interface FinalizePolling {
+  intervalMs: number;
+  maxAttempts: number;
+}
+
+export const DEFAULT_FINALIZE_POLLING: FinalizePolling = {
+  intervalMs: 3000,
+  maxAttempts: 800, // 40 minutes
+};
+
+export interface TransferResult {
+  /** Present when the target reported errors while writing (TransferredWithErrors). */
+  warning?: string;
+}
 
 type TransferScope = 'SingleItem' | 'ItemAndDescendants';
 type MergeStrategy =
@@ -19,6 +42,8 @@ interface TransferOptions {
   mergeStrategy?: MergeStrategy | string;
   onProgress?: (phase: TransferPhase, detail?: string) => void;
   signal?: AbortSignal;
+  /** Override the finalizing poll interval or ceiling (tests use tiny values). */
+  finalizePolling?: Partial<FinalizePolling>;
 }
 
 interface ChunkSetMeta {
@@ -59,7 +84,7 @@ function runCreateExclusive<T>(fn: () => Promise<T>): Promise<T> {
 export async function transferPath(
   client: ClientSDK,
   options: TransferOptions
-): Promise<void> {
+): Promise<TransferResult> {
   const {
     sourceContextId,
     targetContextId,
@@ -68,7 +93,10 @@ export async function transferPath(
     mergeStrategy = 'OverrideExistingItem',
     onProgress,
     signal,
+    finalizePolling,
   } = options;
+  const finalize: FinalizePolling = { ...DEFAULT_FINALIZE_POLLING, ...finalizePolling };
+  let warning: string | undefined;
 
   const report = (phase: TransferPhase, detail?: string) => onProgress?.(phase, detail);
   const transferId = crypto.randomUUID();
@@ -171,9 +199,15 @@ export async function transferPath(
     }
     if (fileIds.length === 0) throw new Error('completeChunkSetTransfer returned no file names');
 
-    // 5. Consume each .raif file on target and poll state until OK.
-    //    ConsumeFile requires a schema prefix on the filename — blob://
-    //    for the Cloud blob-storage location produced by completeChunkSetTransfer.
+    // 5. Consume each .raif file on target, then wait for the target to FINISH
+    //    writing. ConsumeFile only makes the items visible through a transferred
+    //    source overlay; a background job then materializes them into the
+    //    database and the blob advances Consumed -> Transferred when it is done.
+    //    Reporting completion (and refreshing the tree) before Transferred reads
+    //    the target mid-write and caches a transitional child list on the CM,
+    //    which is what made a migrated tree look like it had lost items.
+    //    ConsumeFile requires a schema prefix on the filename - blob:// for the
+    //    Cloud blob-storage location produced by completeChunkSetTransfer.
     //    GetBlobState uses the bare filename.
     report('consuming');
     for (const fileName of fileIds) {
@@ -189,7 +223,8 @@ export async function transferPath(
           },
         })
       );
-      await pollBlobState(client, targetContextId, fileName, signal);
+      const fileWarning = await pollBlobState(client, targetContextId, fileName, report, finalize, signal);
+      if (fileWarning && !warning) warning = fileWarning;
     }
   } finally {
     // 6. Cleanup: delete the transfer on both envs (best-effort). This runs on
@@ -210,6 +245,7 @@ export async function transferPath(
   // error the throw propagates before we get here and the row stays terminal
   // 'error'; on success the row ends on 'complete' (checkmark), not 'cleanup'.
   report('complete');
+  return warning ? { warning } : {};
 }
 
 async function pollUntilReady(
@@ -242,14 +278,33 @@ async function pollUntilReady(
   throw new Error('Content transfer export timed out');
 }
 
+/** Blob states that mean the consume or the background write failed. */
+const BLOB_FAILURE_STATES = new Set(['Error', 'Failed', 'ValidationFailed', 'Discarded', 'NotFound']);
+
+/**
+ * Poll the target's blob state until its background job has finished writing.
+ *
+ * The CM's BlobState enum is: Unknown, Uploading, Uploaded, Initializing, Error,
+ * Consumed, Transferred, TransferredWithErrors, Discarded, ValidationFailed.
+ * Only Transferred means the items are in the database. Consumed means the
+ * file was accepted and the background job is still running, so it is reported
+ * as the 'finalizing' phase and polling continues. Any token not recognised
+ * keeps polling and is surfaced as the phase detail rather than being treated
+ * as done, so a new state can never make Rift report completion early.
+ *
+ * Resolves with a warning string for TransferredWithErrors (the items that did
+ * transfer are in the database), undefined for Transferred.
+ */
 async function pollBlobState(
   client: ClientSDK,
   contextId: string,
   fileName: string,
+  report: (phase: TransferPhase, detail?: string) => void,
+  finalize: FinalizePolling,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<string | undefined> {
   let lastState = '';
-  for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < finalize.maxAttempts; attempt++) {
     signal?.throwIfAborted();
     const result = await client.query('xmc.contentTransfer.getBlobState', {
       params: { query: { fileName, sitecoreContextId: contextId } },
@@ -260,22 +315,24 @@ async function pollBlobState(
       | undefined;
     const state = body?.status ?? body?.BlobState ?? '';
     lastState = state;
-    if (
-      state === 'OK' ||
-      state === 'Complete' ||
-      state === 'Completed' ||
-      state === 'Consumed' ||
-      state === 'Success'
-    ) {
-      return;
+    if (state === 'Transferred') {
+      return undefined;
     }
-    if (state === 'Error' || state === 'Failed') {
-      throw new Error(`Consume failed: ${JSON.stringify(body?.details ?? body?.Error ?? body)}`);
+    if (state === 'TransferredWithErrors') {
+      return `Target reported errors while writing ${fileName}`;
     }
-    // "Uploaded" / "Consuming" / etc. → keep polling
-    await delay(POLL_INTERVAL_MS);
+    if (BLOB_FAILURE_STATES.has(state)) {
+      throw new Error(
+        `Consume failed (state=${state}): ${JSON.stringify(body?.details ?? body?.Error ?? body)}`
+      );
+    }
+    // Consumed = accepted, background write in progress. Everything else
+    // (Unknown, Uploading, Uploaded, Initializing, or an unrecognised token) is
+    // still the consume step.
+    report(state === 'Consumed' ? 'finalizing' : 'consuming', state);
+    await delay(finalize.intervalMs);
   }
-  throw new Error(`Content consume timed out — last state=${lastState}`);
+  throw new Error(`${FINALIZING_TIMEOUT_PREFIX} (last state=${lastState})`);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -63,6 +63,14 @@ export const DEFAULT_SETTINGS: RiftSettings = {
   parallelPaths: true,
 };
 
+/**
+ * Prefix of the error thrown when the target has accepted a file but its
+ * background job has not reached BlobState Transferred within the finalizing
+ * budget. Shared so the progress copy can recognise it and so the run-level
+ * summary can tell a slow target apart from a real failure.
+ */
+export const FINALIZING_TIMEOUT_PREFIX = 'Target is still finalizing';
+
 export interface MigrationHistoryEntry {
   id: string;
   date: string;
@@ -84,6 +92,7 @@ export type TransferPhase =
   | 'uploading'
   | 'assembling'
   | 'consuming'
+  | 'finalizing'
   | 'cleanup'
   | 'complete'
   | 'error';
@@ -100,5 +109,7 @@ export interface TransferProgress {
   chunksTotal?: number;
   chunksComplete?: number;
   error?: string;
+  /** Set when the target finished writing but reported errors (BlobState TransferredWithErrors). */
+  warning?: string;
   events?: TransferProgressEvent[];
 }

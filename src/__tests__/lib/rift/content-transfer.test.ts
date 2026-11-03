@@ -3,6 +3,7 @@ import { transferPath } from '@/lib/rift/content-transfer';
 import { formatProgress } from '@/lib/rift/progress-format';
 import type { ClientSDK } from '@sitecore-marketplace-sdk/client';
 import type { TransferPhase } from '@/lib/rift/types';
+import { FINALIZING_TIMEOUT_PREFIX } from '@/lib/rift/types';
 
 // The SDK proxy wraps responses as { data: <body>, request, response }.
 // Our helpers expect that shape, so mocks return it too.
@@ -10,7 +11,13 @@ function wrap<T>(body: T) {
   return { data: body, request: {} as Request, response: { status: 200 } as Response };
 }
 
-function createMockClient(opts?: { onCreate?: () => Promise<void> }) {
+function createMockClient(opts?: { onCreate?: () => Promise<void>; blobStates?: string[] }) {
+  // getBlobState returns this sequence in order, repeating the last value once
+  // exhausted. The default mirrors the real target: Consumed (background job
+  // still writing items to the database) and then Transferred (job finished).
+  const blobStates = opts?.blobStates ?? ['Consumed', 'Transferred'];
+  let blobIdx = 0;
+
   const mutate = vi.fn(async (key: string, _options?: unknown) => {
     switch (key) {
       case 'xmc.contentTransfer.createContentTransfer':
@@ -38,8 +45,11 @@ function createMockClient(opts?: { onCreate?: () => Promise<void> }) {
         return wrap(new Blob(['chunk-data']));
       case 'xmc.contentTransfer.consumeFile':
         return wrap({});
-      case 'xmc.contentTransfer.getBlobState':
-        return wrap({ status: 'OK' });
+      case 'xmc.contentTransfer.getBlobState': {
+        const state = blobStates[Math.min(blobIdx, blobStates.length - 1)];
+        blobIdx++;
+        return wrap({ BlobState: state });
+      }
       default:
         throw new Error(`unexpected query key: ${key}`);
     }
@@ -101,6 +111,7 @@ describe('transferPath', () => {
     ]);
 
     expect(phases).toContain('creating');
+    expect(phases).toContain('finalizing');
     expect(phases).toContain('complete');
     // Cleanup runs inside the finally, so its phase is reported...
     expect(phases).toContain('cleanup');
@@ -158,5 +169,100 @@ describe('transferPath', () => {
     const formatted = formatProgress({ itemPath: '/sitecore/content/Home', phase: finalPhase });
     expect(formatted.state).toBe('complete');
     expect(formatted.state).not.toBe('active');
+  });
+
+  it('keeps polling through Consumed and completes only on Transferred, reporting finalizing', async () => {
+    const { client, query } = createMockClient({ blobStates: ['Uploaded', 'Consumed', 'Consumed', 'Transferred'] });
+    const events: { phase: TransferPhase; detail?: string }[] = [];
+    const result = await transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0 },
+      onProgress: (phase, detail) => events.push({ phase, detail }),
+    });
+    expect(result).toEqual({});
+    const blobCalls = query.mock.calls.filter((c) => c[0] === 'xmc.contentTransfer.getBlobState');
+    expect(blobCalls).toHaveLength(4);
+    const phases = events.map((e) => e.phase);
+    expect(phases.indexOf('finalizing')).toBeGreaterThan(phases.indexOf('consuming'));
+    expect(phases.indexOf('finalizing')).toBeLessThan(phases.indexOf('cleanup'));
+    expect(phases[phases.length - 1]).toBe('complete');
+    expect(events.find((e) => e.phase === 'finalizing')?.detail).toBe('Consumed');
+  });
+
+  it('never resolves on Consumed alone and times out with the finalizing message', async () => {
+    const { client } = createMockClient({ blobStates: ['Consumed'] });
+    await expect(
+      transferPath(client, {
+        sourceContextId: 'src-ctx',
+        targetContextId: 'tgt-ctx',
+        itemPath: '/sitecore/content/Home',
+        scope: 'SingleItem',
+        finalizePolling: { intervalMs: 0, maxAttempts: 3 },
+      })
+    ).rejects.toThrow(FINALIZING_TIMEOUT_PREFIX);
+  });
+
+  it('treats TransferredWithErrors as complete with a warning', async () => {
+    const { client } = createMockClient({ blobStates: ['Consumed', 'TransferredWithErrors'] });
+    const phases: TransferPhase[] = [];
+    const result = await transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0 },
+      onProgress: (phase) => phases.push(phase),
+    });
+    expect(result.warning).toMatch(/reported errors/i);
+    expect(phases[phases.length - 1]).toBe('complete');
+  });
+
+  it.each(['Error', 'ValidationFailed', 'Discarded', 'NotFound'])('fails on blob state %s', async (state) => {
+    const { client } = createMockClient({ blobStates: [state] });
+    await expect(
+      transferPath(client, {
+        sourceContextId: 'src-ctx',
+        targetContextId: 'tgt-ctx',
+        itemPath: '/sitecore/content/Home',
+        scope: 'SingleItem',
+        finalizePolling: { intervalMs: 0 },
+      })
+    ).rejects.toThrow(state);
+  });
+
+  it('keeps polling on an unknown token and shows it as the detail', async () => {
+    const { client } = createMockClient({ blobStates: ['Validating', 'Transferred'] });
+    const events: { phase: TransferPhase; detail?: string }[] = [];
+    await transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      finalizePolling: { intervalMs: 0 },
+      onProgress: (phase, detail) => events.push({ phase, detail }),
+    });
+    expect(events.some((e) => e.detail === 'Validating')).toBe(true);
+  });
+
+  it('stops polling immediately when cancelled during finalizing', async () => {
+    const { client, query } = createMockClient({ blobStates: ['Consumed'] });
+    const controller = new AbortController();
+    const run = transferPath(client, {
+      sourceContextId: 'src-ctx',
+      targetContextId: 'tgt-ctx',
+      itemPath: '/sitecore/content/Home',
+      scope: 'SingleItem',
+      finalizePolling: { intervalMs: 5, maxAttempts: 1000 },
+      signal: controller.signal,
+      onProgress: (phase) => {
+        if (phase === 'finalizing') controller.abort();
+      },
+    });
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    const after = query.mock.calls.filter((c) => c[0] === 'xmc.contentTransfer.getBlobState').length;
+    expect(after).toBeLessThanOrEqual(2);
   });
 });
