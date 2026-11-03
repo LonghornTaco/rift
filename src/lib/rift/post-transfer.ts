@@ -54,13 +54,17 @@ export function findMissingChildren(before: TreeNode[], after: TreeNode[]): Tree
   return before.filter((n) => !present.has(n.itemId));
 }
 
-export type RepairStatus = 'repairing' | 'repaired' | 'incomplete' | 'failed';
+export type RepairStatus = 'repairing' | 'incomplete' | 'failed';
 
 export interface CacheLagNotice {
   parentPath: string;
   /** Names of the pre-existing children the target is not listing right now. */
   missing: string[];
-  /** Set once Rift has started repairing this parent's listing (see applyRepairResult). */
+  /**
+   * Set once Rift has started repairing this parent's listing. A notice only
+   * exists while there is something to show: a repair in progress, or one that
+   * failed or came back incomplete. A successful repair removes the notice.
+   */
   repair?: { status: RepairStatus; restored?: string[]; error?: string };
 }
 
@@ -86,12 +90,17 @@ export function buildCacheLagNotices(
   return notices;
 }
 
+/** The notices with the given parent's notice replaced by `update(n)`, or removed when it returns null. */
 function updateNotice(
   notices: CacheLagNotice[],
   parentPath: string,
-  update: (n: CacheLagNotice) => CacheLagNotice
+  update: (n: CacheLagNotice) => CacheLagNotice | null
 ): CacheLagNotice[] {
-  return notices.map((n) => (n.parentPath === parentPath ? update(n) : n));
+  return notices.flatMap((n) => {
+    if (n.parentPath !== parentPath) return [n];
+    const next = update(n);
+    return next ? [next] : [];
+  });
 }
 
 /** The notices with the given parent flagged as being repaired right now. */
@@ -101,10 +110,10 @@ export function markRepairing(notices: CacheLagNotice[], parentPath: string): Ca
 
 /**
  * The notices after one flagged parent has been repaired (saved under its
- * current name) and re-read. Its notice stays, so the user sees that content
- * was written: `repaired` when every pre-existing child is listed again,
- * `incomplete` when some still are not. `restored` names what came back,
- * `missing` what is still absent. Other notices are untouched.
+ * current name) and re-read. When every pre-existing child is listed again the
+ * notice is removed: there is nothing left for the user to do. Otherwise it is
+ * replaced as `incomplete`, with `missing` naming what is still absent and
+ * `restored` what came back. Other notices are untouched.
  */
 export function applyRepairResult(
   notices: CacheLagNotice[],
@@ -113,14 +122,14 @@ export function applyRepairResult(
   after: TreeNode[]
 ): CacheLagNotice[] {
   const missing = findMissingChildren(before, after).map((n) => n.name);
-  return updateNotice(notices, parentPath, (n) => ({
-    parentPath,
-    missing,
-    repair: {
-      status: missing.length > 0 ? 'incomplete' : 'repaired',
-      restored: n.missing.filter((name) => !missing.includes(name)),
-    },
-  }));
+  return updateNotice(notices, parentPath, (n) => {
+    if (missing.length === 0) return null;
+    return {
+      parentPath,
+      missing,
+      repair: { status: 'incomplete', restored: n.missing.filter((name) => !missing.includes(name)) },
+    };
+  });
 }
 
 /** The notices with the given parent's repair recorded as failed; its missing list is unchanged. */

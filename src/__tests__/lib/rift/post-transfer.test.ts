@@ -124,10 +124,9 @@ describe('repair bookkeeping on notices', () => {
     ]);
   });
 
-  it('applyRepairResult reports repaired, keeping the restored names, once every pre-existing child is listed again', () => {
+  it('applyRepairResult drops the notice once every pre-existing child is listed again; nothing is left to act on', () => {
     const after = [node('3', 'Data'), node('1', 'about'), node('2', 'ccoe')];
     expect(applyRepairResult(notices, '/a/Home', before, after)).toEqual([
-      { parentPath: '/a/Home', missing: [], repair: { status: 'repaired', restored: ['about', 'ccoe'] } },
       { parentPath: '/a/Other', missing: ['x'] },
     ]);
   });

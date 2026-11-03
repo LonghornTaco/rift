@@ -32,7 +32,6 @@ const FINALIZING_HINT_AFTER_MS = 30000;
 
 function staleListHeader(notices: CacheLagNotice[]): string {
   if (notices.some((n) => n.repair?.status === 'repairing')) return "Repairing the target's stale child list...";
-  if (notices.every((n) => n.repair?.status === 'repaired')) return "The target's stale child list was repaired";
   return 'The target is showing a stale child list';
 }
 
@@ -190,24 +189,18 @@ export function RiftProgressOverlay({
                 const restored = n.repair?.restored ?? [];
                 return (
                   <div key={n.parentPath} className="space-y-1">
-                    {status === 'repaired' ? (
-                      <p>
-                        {n.parentPath}: listing repaired. {restored.length} item(s) that had dropped out of the target&apos;s cached child list are listed again ({restored.join(', ')}). Rift saved the item under its current name so the target re-read its children; that item&apos;s revision and updated timestamp moved.
-                      </p>
-                    ) : (
-                      <p>
-                        {n.parentPath}: {n.missing.length} item(s) that existed before are not listed ({n.missing.join(', ')}). They are still in the database; the target cached this child list while the transfer was writing, and it does not correct itself.
-                        {status === 'repairing' && (
-                          <>
-                            {' '}Repairing the listing (saving the item under its current name)...
-                            <Loader2 className="inline h-3 w-3 animate-spin ml-1" />
-                          </>
-                        )}
-                        {status === 'incomplete' &&
-                          ` Rift saved the item under its current name and ${restored.length} item(s) came back, but these are still not listed.`}
-                        {status === 'failed' && ` Automatic repair failed: ${n.repair?.error}`}
-                      </p>
-                    )}
+                    <p>
+                      {n.parentPath}: {n.missing.length} item(s) that existed before are not listed ({n.missing.join(', ')}). They are still in the database; the target cached this child list while the transfer was writing, and it does not correct itself.
+                      {status === 'repairing' && (
+                        <>
+                          {' '}Repairing the listing (saving the item under its current name)...
+                          <Loader2 className="inline h-3 w-3 animate-spin ml-1" />
+                        </>
+                      )}
+                      {status === 'incomplete' &&
+                        ` Rift saved the item under its current name and ${restored.length} item(s) came back, but these are still not listed.`}
+                      {status === 'failed' && ` Automatic repair failed: ${n.repair?.error}`}
+                    </p>
                     {(status === 'failed' || status === 'incomplete') && (
                       <div className="flex items-start gap-2 flex-wrap">
                         {onRepairChildList && (
