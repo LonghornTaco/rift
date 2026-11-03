@@ -489,21 +489,26 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       // tree then caches a transitional child list on the CM and makes the
       // migration look like it deleted items. In that case skip the refresh
       // and tell the user to refresh later. Uses the soft key so the user's
-      // expanded tree state is preserved.
+      // expanded tree state is preserved. The tree is refreshed after ANY run
+      // whose writes have all settled, including a failed or cancelled one, so
+      // such a run does not leave the drift walk paused and expansion blocked;
+      // the stale-list check below still only runs when something completed.
       const stillWriting = hasUnconfirmedTargetWrite(progress);
       setTargetStillWriting(stillWriting);
-      if (!stillWriting && progress.some((p) => p.phase === 'complete')) {
-        // Stale-list check: every child a snapshotted root had before the run
-        // must still be listed after it, because the merge strategy Rift sends
-        // never deletes. Anything missing is the target's cache, not data loss,
-        // and it does not correct itself (the transfer job's completion skips
-        // the cache clear), so each flagged root is repaired right away and
-        // re-read. The tree is refreshed once that is done, so it shows the
-        // repaired lists rather than the stale ones.
-        const after = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
-        const notices = buildCacheLagNotices(before, after);
-        setCacheLagNotices(notices);
-        for (const n of notices) await repairOne(targetEnv.contextId, n.parentPath);
+      if (!stillWriting) {
+        if (progress.some((p) => p.phase === 'complete')) {
+          // Stale-list check: every child a snapshotted root had before the run
+          // must still be listed after it, because the merge strategy Rift sends
+          // never deletes. Anything missing is the target's cache, not data loss,
+          // and it does not correct itself (the transfer job's completion skips
+          // the cache clear), so each flagged root is repaired right away and
+          // re-read. The tree is refreshed once that is done, so it shows the
+          // repaired lists rather than the stale ones.
+          const after = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
+          const notices = buildCacheLagNotices(before, after);
+          setCacheLagNotices(notices);
+          for (const n of notices) await repairOne(targetEnv.contextId, n.parentPath);
+        }
         setTreeSoftRefreshKey((k) => k + 1);
       }
     }
