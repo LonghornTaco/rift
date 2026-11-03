@@ -409,6 +409,9 @@ export function RiftContentTree({
   // wrong list on the CM.
   const [awaitingSettle, setAwaitingSettle] = useState(false);
   const expansionBlocked = !!disabled || awaitingSettle;
+  // Bumped each time a migration starts, so a soft refresh can tell that a newer
+  // run began while its reads were in flight.
+  const runGenRef = useRef(0);
 
   // The two top-level nodes: "content" and "media library" from /sitecore
   const [contentNode, setContentNode] = useState<DualTreeNode | null>(null);
@@ -519,6 +522,7 @@ export function RiftContentTree({
   // so only the soft refresh or a full reset may resume the walk.
   useEffect(() => {
     if (disabled) {
+      runGenRef.current += 1;
       walkerRef.current?.pause();
       setAwaitingSettle(true);
     }
@@ -669,6 +673,7 @@ export function RiftContentTree({
     );
 
     let cancelled = false;
+    const runGen = runGenRef.current;
     walkerRef.current?.reset(); // drop any in-flight walk reads; we are re-reading
 
     (async () => {
@@ -694,8 +699,12 @@ export function RiftContentTree({
         const sourceOnly = r.children.map((c) => c.source).filter((n): n is TreeNode => !!n);
         onChildrenLoadedRef.current?.(r.path, sourceOnly);
       }
-      setAwaitingSettle(false);
-      walkerRef.current?.enqueue(missingFolders(next, walkRootsRef.current));
+      // A run that started while these reads were in flight owns the settle flag
+      // now; only its own soft refresh may clear it and resume the walk.
+      if (runGenRef.current === runGen) {
+        setAwaitingSettle(false);
+        walkerRef.current?.enqueue(missingFolders(next, walkRootsRef.current));
+      }
     })();
 
     return () => {
@@ -897,7 +906,7 @@ export function RiftContentTree({
         </div>
         <div className="flex items-center gap-4">
           {walkProgress.pending + walkProgress.inFlight > 0 &&
-            (awaitingSettle ? (
+            (awaitingSettle || walkProgress.paused ? (
               <span className="text-xs text-muted-foreground">
                 Drift scan paused until the tree is refreshed
               </span>
