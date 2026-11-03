@@ -1,4 +1,5 @@
 import type { TransferProgress } from './types';
+import { FINALIZING_TIMEOUT_PREFIX } from './types';
 
 export type MigrationStage = 'Prepare' | 'Package' | 'Transfer' | 'Import' | 'Done' | 'Failed';
 
@@ -25,6 +26,11 @@ const CORS_PATTERN = /cors|access-control|preflight|method (put|delete)/i;
  * is still shown in the per-row debug log.
  */
 export function classifyError(message: string | undefined): string {
+  if (message && message.startsWith(FINALIZING_TIMEOUT_PREFIX)) {
+    // The target accepted the file but its background write outran our
+    // polling budget. The items may well still land; this is slow, not failed.
+    return "The target is still finalizing this item. It may still appear once the target finishes writing; check the target environment's transfer history.";
+  }
   if (message && CORS_PATTERN.test(message)) {
     return 'Upload was blocked by the target environment (CORS). This is an environment-side setting, not a Rift issue.';
   }
@@ -69,10 +75,19 @@ export function formatProgress(tp: TransferProgress, envs: ProgressEnvNames = {}
       return { stage: 'Transfer', statusLine: `Assembling package on ${target}`, percent: null, state: 'active' };
     case 'consuming':
       return { stage: 'Import', statusLine: `Importing into ${target}`, percent: null, state: 'active' };
+    case 'finalizing':
+      // The target accepted the file and its background job is writing the
+      // items into the database. Indeterminate: the CM gives no progress.
+      return { stage: 'Import', statusLine: `Finalizing on ${target}...`, percent: null, state: 'active' };
     case 'cleanup':
       return { stage: 'Import', statusLine: 'Finishing up', percent: null, state: 'active' };
     case 'complete':
-      return { stage: 'Done', statusLine: 'Done', percent: 100, state: 'complete' };
+      return {
+        stage: 'Done',
+        statusLine: tp.warning ? 'Done (target reported errors)' : 'Done',
+        percent: 100,
+        state: 'complete',
+      };
     case 'error':
       return { stage: 'Failed', statusLine: classifyError(tp.error), percent: percentFor(tp), state: 'error' };
     default:

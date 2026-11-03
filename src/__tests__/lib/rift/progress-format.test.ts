@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { formatProgress, classifyError } from '@/lib/rift/progress-format';
 import type { TransferProgress } from '@/lib/rift/types';
+import { FINALIZING_TIMEOUT_PREFIX } from '@/lib/rift/types';
 
 const base = (over: Partial<TransferProgress>): TransferProgress => ({
   itemPath: '/sitecore/content/Home',
@@ -47,6 +48,16 @@ describe('formatProgress', () => {
     expect(r.statusLine).toBe('Downloading content');
     expect(r.percent).toBeNull();
   });
+
+  it('maps finalizing to Import, indeterminate, active, with the target name', () => {
+    const r = formatProgress(base({ phase: 'finalizing', chunksComplete: 3, chunksTotal: 3 }), { target: 'dev' });
+    expect(r).toEqual({ stage: 'Import', statusLine: 'Finalizing on dev...', percent: null, state: 'active' });
+  });
+
+  it('renders a complete row with a warning as done-with-errors, still complete', () => {
+    const r = formatProgress(base({ phase: 'complete', warning: 'Target reported errors while writing x.raif' }));
+    expect(r).toEqual({ stage: 'Done', statusLine: 'Done (target reported errors)', percent: 100, state: 'complete' });
+  });
 });
 
 describe('classifyError', () => {
@@ -61,5 +72,11 @@ describe('classifyError', () => {
 
   it('handles undefined', () => {
     expect(classifyError(undefined)).toBe('Migration failed for this item.');
+  });
+
+  it('classifies the finalizing timeout to the still-finalizing copy', () => {
+    expect(classifyError(`${FINALIZING_TIMEOUT_PREFIX} (last state=Consumed)`)).toBe(
+      "The target is still finalizing this item. It may still appear once the target finishes writing; check the target environment's transfer history."
+    );
   });
 });
