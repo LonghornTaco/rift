@@ -6,6 +6,8 @@ import { TreeNode, MigrationPath, DualTreeNode } from '@/lib/rift/types';
 import { fetchDualTreeChildren } from '@/lib/rift/api-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Folder, File } from 'lucide-react';
+import { DriftPill } from './DriftPill';
+import type { DriftRollup } from '@/lib/rift/drift-rollup';
 
 import { cn } from '@/lib/utils';
 
@@ -27,6 +29,7 @@ interface SourceCellProps {
   onTogglePath: (node: TreeNode) => void;
   onCompareItem: (node: DualTreeNode) => void;
   isCompareTarget: boolean;
+  rollup?: DriftRollup;
 }
 
 function SourceCell({
@@ -37,6 +40,7 @@ function SourceCell({
   onTogglePath,
   onCompareItem,
   isCompareTarget,
+  rollup,
 }: SourceCellProps) {
   if (!node.source) {
     return <GhostSlot />;
@@ -81,6 +85,7 @@ function SourceCell({
         >
           {node.name}
         </span>
+        <DriftPill rollup={rollup} />
       </button>
     </div>
   );
@@ -97,9 +102,10 @@ interface TargetCellProps {
   targetContextId: string | null;
   onCompareItem: (node: DualTreeNode) => void;
   isCompareTarget: boolean;
+  rollup?: DriftRollup;
 }
 
-function TargetCell({ node, targetContextId, onCompareItem, isCompareTarget }: TargetCellProps) {
+function TargetCell({ node, targetContextId, onCompareItem, isCompareTarget, rollup }: TargetCellProps) {
   if (targetContextId === null) {
     return (
       <div className="flex items-center min-w-0 text-muted-foreground/60 text-sm">
@@ -131,6 +137,7 @@ function TargetCell({ node, targetContextId, onCompareItem, isCompareTarget }: T
         aria-hidden="true"
       />
       <span className="truncate">{node.target.name}</span>
+      <DriftPill rollup={rollup} />
     </button>
   );
 }
