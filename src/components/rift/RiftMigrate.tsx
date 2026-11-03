@@ -21,7 +21,9 @@ import { transferPath } from '@/lib/rift/content-transfer';
 import {
   distinctSnapshotPaths,
   buildCacheLagNotices,
-  refreshCacheLagNotice,
+  markRepairing,
+  applyRepairResult,
+  markRepairFailed,
   hasUnconfirmedTargetWrite,
   runStatus,
   type CacheLagNotice,
@@ -399,10 +401,9 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
     const settings = getSettings();
 
-    // Snapshot the target's children under each selected root AND its parent
-    // before anything is written, so the post-run check can tell a stale cached
-    // child list (a pre-existing child no longer listed) apart from a healthy
-    // transfer. The root's own list is the one a SingleItem transfer empties.
+    // Snapshot the target's children under each selected root before anything
+    // is written, so the post-run check can tell a stale cached child list (a
+    // pre-existing child no longer listed) apart from a healthy transfer.
     const snapshotPaths = distinctSnapshotPaths(paths.map((p) => p.itemPath));
     const before = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
     beforeSnapshotRef.current = before;
@@ -492,30 +493,45 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       const stillWriting = hasUnconfirmedTargetWrite(progress);
       setTargetStillWriting(stillWriting);
       if (!stillWriting && progress.some((p) => p.phase === 'complete')) {
-        setTreeSoftRefreshKey((k) => k + 1);
-        // Stale-cache check: every child a snapshotted path had before the run
+        // Stale-list check: every child a snapshotted root had before the run
         // must still be listed after it, because the merge strategy Rift sends
         // never deletes. Anything missing is the target's cache, not data loss,
         // and it does not correct itself (the transfer job's completion skips
-        // the cache clear), so the notice tells the user to clear caches.
+        // the cache clear), so each flagged root is repaired right away and
+        // re-read. The tree is refreshed once that is done, so it shows the
+        // repaired lists rather than the stale ones.
         const after = await snapshotChildLists(client, targetEnv.contextId, snapshotPaths);
-        setCacheLagNotices(buildCacheLagNotices(before, after));
+        const notices = buildCacheLagNotices(before, after);
+        setCacheLagNotices(notices);
+        for (const n of notices) await repairOne(targetEnv.contextId, n.parentPath);
+        setTreeSoftRefreshKey((k) => k + 1);
       }
     }
   }
 
   /**
-   * Repair one flagged parent on the target: save it under its current name so
-   * the CM drops the stale cached child list, re-read it strictly, update the
-   * notice, and soft-refresh the tree. Errors propagate to the overlay.
+   * Repair one flagged root on the target: save it under its current name so
+   * the CM drops the stale cached child list, re-read it strictly, and record
+   * the outcome on its notice. Never throws; a failure is shown on the notice.
    */
+  async function repairOne(targetContextId: string, parentPath: string) {
+    setCacheLagNotices((notices) => markRepairing(notices, parentPath));
+    try {
+      await repairChildList(client, targetContextId, parentPath);
+      const afterRepair = await fetchTreeChildrenStrict(client, targetContextId, parentPath);
+      const before = beforeSnapshotRef.current.get(parentPath) ?? [];
+      setCacheLagNotices((notices) => applyRepairResult(notices, parentPath, before, afterRepair));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setCacheLagNotices((notices) => markRepairFailed(notices, parentPath, message));
+    }
+  }
+
+  /** Manual retry from the overlay after an automatic repair failed or came back incomplete. */
   async function handleRepairChildList(parentPath: string) {
     const targetEnv = environments.find((e) => e.tenantId === selectedTargetEnvId);
-    if (!targetEnv) throw new Error('No target environment selected');
-    await repairChildList(client, targetEnv.contextId, parentPath);
-    const after = await fetchTreeChildrenStrict(client, targetEnv.contextId, parentPath);
-    const before = beforeSnapshotRef.current.get(parentPath) ?? [];
-    setCacheLagNotices((notices) => refreshCacheLagNotice(notices, parentPath, before, after));
+    if (!targetEnv) return;
+    await repairOne(targetEnv.contextId, parentPath);
     setTreeSoftRefreshKey((k) => k + 1);
   }
 

@@ -20,15 +20,21 @@ interface RiftProgressOverlayProps {
   /** True when a path's target write went unconfirmed (timeout, cancel, or transport error); the tree was not refreshed. */
   targetStillWriting?: boolean;
   /**
-   * Repair one flagged parent's listing on the target (save it under its
-   * current name so the target drops its cached child list) and re-read it.
-   * Rejects with a message the overlay shows next to that parent.
+   * Retry the repair of one flagged parent's listing after the automatic
+   * repair failed or came back incomplete. The outcome arrives through the
+   * notice's `repair` field; this never rejects.
    */
-  onRepairChildList?: (parentPath: string) => Promise<void>;
+  onRepairChildList?: (parentPath: string) => void | Promise<void>;
 }
 
 /** How long a row may sit in `finalizing` before the explanatory hint appears. */
 const FINALIZING_HINT_AFTER_MS = 30000;
+
+function staleListHeader(notices: CacheLagNotice[]): string {
+  if (notices.some((n) => n.repair?.status === 'repairing')) return "Repairing the target's stale child list...";
+  if (notices.every((n) => n.repair?.status === 'repaired')) return "The target's stale child list was repaired";
+  return 'The target is showing a stale child list';
+}
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -60,29 +66,6 @@ export function RiftProgressOverlay({
   const [finalElapsed, setFinalElapsed] = useState<number | null>(null);
   const [debugAll, setDebugAll] = useState(false);
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
-  // Stale-list repair: the parent being repaired right now, and the last error per parent.
-  const [repairingPath, setRepairingPath] = useState<string | null>(null);
-  const [repairErrors, setRepairErrors] = useState<Record<string, string>>({});
-
-  async function runRepair(parentPath: string) {
-    if (!onRepairChildList || repairingPath) return;
-    setRepairingPath(parentPath);
-    setRepairErrors((errors) => {
-      const next = { ...errors };
-      delete next[parentPath];
-      return next;
-    });
-    try {
-      await onRepairChildList(parentPath);
-    } catch (err) {
-      setRepairErrors((errors) => ({
-        ...errors,
-        [parentPath]: err instanceof Error ? err.message : String(err),
-      }));
-    } finally {
-      setRepairingPath(null);
-    }
-  }
 
   useEffect(() => {
     if (isActive && !startTimeRef.current) {
@@ -201,40 +184,48 @@ export function RiftProgressOverlay({
           )}
           {cacheLagNotices.length > 0 && (
             <div className="space-y-1">
-              <p className="font-medium">The target is showing a stale child list</p>
-              {cacheLagNotices.map((n) => (
-                <div key={n.parentPath} className="space-y-1">
-                  <p>
-                    {n.parentPath}: {n.missing.length} item(s) that existed before are no longer listed ({n.missing.join(', ')}). They are still in the database. The target cached this child list while the transfer was writing, and it will not correct itself.
-                  </p>
-                  <div className="flex items-start gap-2 flex-wrap">
-                    {onRepairChildList && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-xs shrink-0"
-                        disabled={repairingPath !== null}
-                        onClick={() => runRepair(n.parentPath)}
-                      >
-                        {repairingPath === n.parentPath ? (
+              <p className="font-medium">{staleListHeader(cacheLagNotices)}</p>
+              {cacheLagNotices.map((n) => {
+                const status = n.repair?.status;
+                const restored = n.repair?.restored ?? [];
+                return (
+                  <div key={n.parentPath} className="space-y-1">
+                    {status === 'repaired' ? (
+                      <p>
+                        {n.parentPath}: listing repaired. {restored.length} item(s) that had dropped out of the target&apos;s cached child list are listed again ({restored.join(', ')}). Rift saved the item under its current name so the target re-read its children; that item&apos;s revision and updated timestamp moved.
+                      </p>
+                    ) : (
+                      <p>
+                        {n.parentPath}: {n.missing.length} item(s) that existed before are not listed ({n.missing.join(', ')}). They are still in the database; the target cached this child list while the transfer was writing, and it does not correct itself.
+                        {status === 'repairing' && (
                           <>
-                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                            Repairing...
+                            {' '}Repairing the listing (saving the item under its current name)...
+                            <Loader2 className="inline h-3 w-3 animate-spin ml-1" />
                           </>
-                        ) : (
-                          'Repair listing'
                         )}
-                      </Button>
+                        {status === 'incomplete' &&
+                          ` Rift saved the item under its current name and ${restored.length} item(s) came back, but these are still not listed.`}
+                        {status === 'failed' && ` Automatic repair failed: ${n.repair?.error}`}
+                      </p>
                     )}
-                    <span>
-                      Repair saves the item under its current name so the target re-reads its children; it bumps that one item&apos;s revision and updated timestamp. Alternatively clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All), then Refresh.
-                    </span>
+                    {(status === 'failed' || status === 'incomplete') && (
+                      <div className="flex items-start gap-2 flex-wrap">
+                        {onRepairChildList && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs shrink-0"
+                            onClick={() => onRepairChildList(n.parentPath)}
+                          >
+                            Retry repair
+                          </Button>
+                        )}
+                        <span>Or clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All), then Refresh.</span>
+                      </div>
+                    )}
                   </div>
-                  {repairErrors[n.parentPath] && (
-                    <p className="text-red-700 dark:text-red-300">Repair failed: {repairErrors[n.parentPath]}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

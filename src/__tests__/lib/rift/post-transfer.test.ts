@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  parentPathOf,
   distinctSnapshotPaths,
   findMissingChildren,
   buildCacheLagNotices,
-  refreshCacheLagNotice,
+  markRepairing,
+  applyRepairResult,
+  markRepairFailed,
   hasUnconfirmedTargetWrite,
   runStatus,
 } from '@/lib/rift/post-transfer';
@@ -17,14 +18,6 @@ const node = (itemId: string, name: string): TreeNode => ({
   path: `/x/${name}`,
   hasChildren: false,
   templateName: 'T',
-});
-
-describe('parentPathOf', () => {
-  it('returns the parent and skips roots', () => {
-    expect(parentPathOf('/sitecore/content/mcc/Home')).toBe('/sitecore/content/mcc');
-    expect(parentPathOf('/sitecore')).toBe('');
-    expect(parentPathOf('Home')).toBe('');
-  });
 });
 
 describe('findMissingChildren', () => {
@@ -109,41 +102,47 @@ describe('hasUnconfirmedTargetWrite / runStatus', () => {
 });
 
 describe('distinctSnapshotPaths', () => {
-  it('snapshots each selected root itself as well as its parent, once each, roots of the tree skipped', () => {
-    // A SingleItem transfer of a parent that already exists on the target is the
-    // case that empties the parent's own cached child list, so the root's own
-    // children must be in the before/after comparison, not only the parent's.
-    expect(distinctSnapshotPaths(['/a/b/c', '/a/b/d', '/sitecore', '/a/b/c'])).toEqual([
-      '/a/b',
-      '/a/b/c',
-      '/a/b/d',
-      '/sitecore',
-    ]);
-  });
-
-  it('does not list a path twice when one selected root is the parent of another', () => {
-    expect(distinctSnapshotPaths(['/a/b/c', '/a/b'])).toEqual(['/a/b', '/a/b/c', '/a']);
+  it('snapshots each selected root once, in order, and nothing else', () => {
+    // Only a transferred item's own child list can go stale (it is rewritten
+    // under a lock); its parent is not transferred and a new child updates the
+    // parent's cached list in place. So the roots are the whole snapshot.
+    expect(distinctSnapshotPaths(['/a/b/c', '/a/b/d', '/a/b/c', ''])).toEqual(['/a/b/c', '/a/b/d']);
   });
 });
 
-describe('refreshCacheLagNotice', () => {
+describe('repair bookkeeping on notices', () => {
   const notices = [
     { parentPath: '/a/Home', missing: ['about', 'ccoe'] },
     { parentPath: '/a/Other', missing: ['x'] },
   ];
   const before = [node('1', 'about'), node('2', 'ccoe'), node('3', 'Data')];
 
-  it('drops the notice once every pre-existing child is listed again', () => {
-    const after = [node('3', 'Data'), node('1', 'about'), node('2', 'ccoe')];
-    expect(refreshCacheLagNotice(notices, '/a/Home', before, after)).toEqual([
+  it('markRepairing flags only the given parent', () => {
+    expect(markRepairing(notices, '/a/Home')).toEqual([
+      { parentPath: '/a/Home', missing: ['about', 'ccoe'], repair: { status: 'repairing' } },
       { parentPath: '/a/Other', missing: ['x'] },
     ]);
   });
 
-  it('keeps the notice in place with the recomputed missing names when some are still absent', () => {
+  it('applyRepairResult reports repaired, keeping the restored names, once every pre-existing child is listed again', () => {
+    const after = [node('3', 'Data'), node('1', 'about'), node('2', 'ccoe')];
+    expect(applyRepairResult(notices, '/a/Home', before, after)).toEqual([
+      { parentPath: '/a/Home', missing: [], repair: { status: 'repaired', restored: ['about', 'ccoe'] } },
+      { parentPath: '/a/Other', missing: ['x'] },
+    ]);
+  });
+
+  it('applyRepairResult reports incomplete with what is still missing and what came back', () => {
     const after = [node('3', 'Data'), node('1', 'about')];
-    expect(refreshCacheLagNotice(notices, '/a/Home', before, after)).toEqual([
-      { parentPath: '/a/Home', missing: ['ccoe'] },
+    expect(applyRepairResult(notices, '/a/Home', before, after)).toEqual([
+      { parentPath: '/a/Home', missing: ['ccoe'], repair: { status: 'incomplete', restored: ['about'] } },
+      { parentPath: '/a/Other', missing: ['x'] },
+    ]);
+  });
+
+  it('markRepairFailed keeps the missing list and records the error', () => {
+    expect(markRepairFailed(notices, '/a/Home', 'Access denied')).toEqual([
+      { parentPath: '/a/Home', missing: ['about', 'ccoe'], repair: { status: 'failed', error: 'Access denied' } },
       { parentPath: '/a/Other', missing: ['x'] },
     ]);
   });

@@ -21,13 +21,6 @@ import { CONSUME_REJECTED_PREFIX } from './types';
  * component.
  */
 
-/** The path up to the last `/`, or `''` when there is no parent segment. */
-export function parentPathOf(itemPath: string): string {
-  const idx = itemPath.lastIndexOf('/');
-  if (idx <= 0) return '';
-  return itemPath.slice(0, idx);
-}
-
 /** Unique non-empty paths, in first-seen order. */
 function distinctPaths(paths: string[]): string[] {
   const seen = new Set<string>();
@@ -41,15 +34,14 @@ function distinctPaths(paths: string[]): string[] {
 }
 
 /**
- * The target paths whose child lists are compared before and after a run:
- * each selected root's parent AND the root itself, each once, in first-seen
- * order. The root's own list is the one at risk: a SingleItem transfer of a
- * parent that already exists on the target empties that parent's cached child
- * list (see the module comment), and the parent's parent only catches the case
- * where the root itself disappears from view.
+ * The target paths whose child lists are compared before and after a run: each
+ * selected root, once, in first-seen order. Only a transferred item's own list
+ * can go stale (it is rewritten under a lock, see the module comment); its
+ * parent is not transferred, and a newly created child updates the parent's
+ * cached list in place.
  */
 export function distinctSnapshotPaths(itemPaths: string[]): string[] {
-  return distinctPaths(itemPaths.flatMap((p) => [parentPathOf(p), p]));
+  return distinctPaths(itemPaths);
 }
 
 /**
@@ -62,10 +54,14 @@ export function findMissingChildren(before: TreeNode[], after: TreeNode[]): Tree
   return before.filter((n) => !present.has(n.itemId));
 }
 
+export type RepairStatus = 'repairing' | 'repaired' | 'incomplete' | 'failed';
+
 export interface CacheLagNotice {
   parentPath: string;
-  /** Names of the pre-existing children the target is no longer listing. */
+  /** Names of the pre-existing children the target is not listing right now. */
   missing: string[];
+  /** Set once Rift has started repairing this parent's listing (see applyRepairResult). */
+  repair?: { status: RepairStatus; restored?: string[]; error?: string };
 }
 
 /**
@@ -90,23 +86,50 @@ export function buildCacheLagNotices(
   return notices;
 }
 
+function updateNotice(
+  notices: CacheLagNotice[],
+  parentPath: string,
+  update: (n: CacheLagNotice) => CacheLagNotice
+): CacheLagNotice[] {
+  return notices.map((n) => (n.parentPath === parentPath ? update(n) : n));
+}
+
+/** The notices with the given parent flagged as being repaired right now. */
+export function markRepairing(notices: CacheLagNotice[], parentPath: string): CacheLagNotice[] {
+  return updateNotice(notices, parentPath, (n) => ({ ...n, repair: { status: 'repairing' } }));
+}
+
 /**
- * The notices after one flagged parent has been repaired and re-read: its
- * notice is dropped when every pre-existing child is listed again, otherwise
- * replaced in place with the recomputed missing names. Other notices are
- * untouched.
+ * The notices after one flagged parent has been repaired (saved under its
+ * current name) and re-read. Its notice stays, so the user sees that content
+ * was written: `repaired` when every pre-existing child is listed again,
+ * `incomplete` when some still are not. `restored` names what came back,
+ * `missing` what is still absent. Other notices are untouched.
  */
-export function refreshCacheLagNotice(
+export function applyRepairResult(
   notices: CacheLagNotice[],
   parentPath: string,
   before: TreeNode[],
   after: TreeNode[]
 ): CacheLagNotice[] {
   const missing = findMissingChildren(before, after).map((n) => n.name);
-  return notices.flatMap((n) => {
-    if (n.parentPath !== parentPath) return [n];
-    return missing.length > 0 ? [{ parentPath, missing }] : [];
-  });
+  return updateNotice(notices, parentPath, (n) => ({
+    parentPath,
+    missing,
+    repair: {
+      status: missing.length > 0 ? 'incomplete' : 'repaired',
+      restored: n.missing.filter((name) => !missing.includes(name)),
+    },
+  }));
+}
+
+/** The notices with the given parent's repair recorded as failed; its missing list is unchanged. */
+export function markRepairFailed(
+  notices: CacheLagNotice[],
+  parentPath: string,
+  error: string
+): CacheLagNotice[] {
+  return updateNotice(notices, parentPath, (n) => ({ ...n, repair: { status: 'failed', error } }));
 }
 
 /**
