@@ -9,6 +9,7 @@ import { Folder, File } from 'lucide-react';
 import { DriftPill } from './DriftPill';
 import {
   computeDriftRollup,
+  evictSubtrees,
   isUnderRoot,
   missingFolders,
   walkableChildPaths,
@@ -206,6 +207,48 @@ interface TreeNodeRowProps {
   onCompareItem: (node: DualTreeNode) => void;
   compareTargetPath: string | null;
   driftRollup: ReadonlyMap<string, DriftRollup>;
+  /** True while the target may still be writing; uncached folders cannot be expanded. */
+  expansionBlocked: boolean;
+}
+
+/**
+ * The expand arrow shared by both row renderers, with the loading overlay. When
+ * `blocked` the arrow is dimmed and inert.
+ */
+function ExpandArrow({
+  hasChildren,
+  isExpanded,
+  isLoading,
+  blocked,
+  onClick,
+}: {
+  hasChildren: boolean;
+  isExpanded: boolean;
+  isLoading: boolean;
+  blocked: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <span className="w-4 shrink-0 relative text-center">
+      {hasChildren ? (
+        <span
+          onClick={blocked ? undefined : onClick}
+          className={cn(
+            'text-muted-foreground select-none',
+            blocked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+          )}
+          title={blocked ? 'Target is still writing; refresh the tree to continue' : undefined}
+        >
+          {isExpanded ? '\u25BC' : '\u25B6'}
+        </span>
+      ) : null}
+      {isLoading && (
+        <span className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-background">
+          ...
+        </span>
+      )}
+    </span>
+  );
 }
 
 function TreeNodeRow({
@@ -225,6 +268,7 @@ function TreeNodeRow({
   onCompareItem,
   compareTargetPath,
   driftRollup,
+  expansionBlocked,
 }: TreeNodeRowProps) {
   const isExpanded = expandedNodes.has(node.path);
   const isLoading = loadingNodes.has(node.path);
@@ -246,22 +290,13 @@ function TreeNodeRow({
         className="flex items-center gap-2 leading-8 text-sm"
         style={{ paddingLeft: depth * 20 }}
       >
-        {/* Shared expand arrow with loading spinner overlay */}
-        <span className="w-4 shrink-0 relative text-center">
-          {node.hasChildren ? (
-            <span
-              onClick={() => onExpand(node)}
-              className="cursor-pointer text-muted-foreground select-none"
-            >
-              {isExpanded ? '\u25BC' : '\u25B6'}
-            </span>
-          ) : null}
-          {isLoading && (
-            <span className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-background">
-              ...
-            </span>
-          )}
-        </span>
+        <ExpandArrow
+          hasChildren={node.hasChildren}
+          isExpanded={isExpanded}
+          isLoading={isLoading}
+          blocked={expansionBlocked && !childrenCache.has(node.path)}
+          onClick={() => onExpand(node)}
+        />
 
         {/* Source half */}
         <div className="flex-1 min-w-0">
@@ -310,6 +345,7 @@ function TreeNodeRow({
             onCompareItem={onCompareItem}
             compareTargetPath={compareTargetPath}
             driftRollup={driftRollup}
+            expansionBlocked={expansionBlocked}
           />
         ))}
     </>
@@ -367,6 +403,12 @@ export function RiftContentTree({
     paused: false,
   });
   const [walkRoots, setWalkRoots] = useState<string[]>([]);
+  // Set when a migration starts; cleared only by the post-run soft refresh or a full
+  // reset. While set, the walk stays paused and uncached folders cannot be expanded,
+  // because reading a target child list while the target is still writing caches a
+  // wrong list on the CM.
+  const [awaitingSettle, setAwaitingSettle] = useState(false);
+  const expansionBlocked = !!disabled || awaitingSettle;
 
   // The two top-level nodes: "content" and "media library" from /sitecore
   const [contentNode, setContentNode] = useState<DualTreeNode | null>(null);
@@ -383,6 +425,9 @@ export function RiftContentTree({
 
   const walkRootsRef = useRef<string[]>([]);
   walkRootsRef.current = walkRoots;
+
+  const selectedPathsRef = useRef(selectedPaths);
+  selectedPathsRef.current = selectedPaths;
 
   const selectedPathSet = new Set(
     selectedPaths.map((p) => p.itemPath)
@@ -469,9 +514,20 @@ export function RiftContentTree({
     };
   }, [client, contextId, targetContextId]);
 
+  // A migration is starting: stop the walk. Deliberately nothing happens when
+  // `disabled` goes false again - the parent clears it before its post-run checks,
+  // so only the soft refresh or a full reset may resume the walk.
+  useEffect(() => {
+    if (disabled) {
+      walkerRef.current?.pause();
+      setAwaitingSettle(true);
+    }
+  }, [disabled]);
+
   // Fetch both trees on mount
   useEffect(() => {
     let cancelled = false;
+    setAwaitingSettle(false);
     setContentNode(null);
     setMediaLibraryNode(null);
     setExpandedNodes(new Set());
@@ -595,15 +651,22 @@ export function RiftContentTree({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, refreshKey, targetContextId]);
 
-  // Soft refresh: re-fetch the children of every currently-expanded node and
-  // merge the results into the cache, WITHOUT resetting expansion or clearing
-  // the cache. Triggered after a successful migration so the target side picks
-  // up newly-created items (ghost/drift rows resolve) while the user keeps their
-  // place in the tree. Skipped on mount (key starts at 0).
+  // Soft refresh: re-fetch the children of every currently-expanded node and of
+  // the parent of every selected path, drop the migrated subtrees from the cache,
+  // and merge the fresh reads in WITHOUT resetting expansion. Triggered after a
+  // migration once the parent's post-run check and repairs are done, so the target
+  // side picks up newly-created items while the user keeps their place in the tree.
+  // It then clears the settle flag and re-walks whatever is now missing beneath the
+  // walk roots. Skipped on mount (key starts at 0).
   useEffect(() => {
     if (!preserveExpansionRefreshKey) return;
-    const paths = Array.from(expandedNodesRef.current);
-    if (paths.length === 0) return;
+    const selectedItemPaths = selectedPathsRef.current.map((p) => p.itemPath);
+    const paths = Array.from(
+      new Set([
+        ...expandedNodesRef.current,
+        ...selectedItemPaths.map((path) => path.slice(0, path.lastIndexOf('/'))),
+      ])
+    );
 
     let cancelled = false;
     walkerRef.current?.reset(); // drop any in-flight walk reads; we are re-reading
@@ -624,15 +687,15 @@ export function RiftContentTree({
       const valid = results.filter(
         (r): r is { path: string; children: DualTreeNode[] } => r !== null
       );
-      setChildrenCache((prev) => {
-        const next = new Map(prev);
-        for (const r of valid) next.set(r.path, r.children);
-        return next;
-      });
+      const next = new Map(evictSubtrees(childrenCacheRef.current, selectedItemPaths));
+      for (const r of valid) next.set(r.path, r.children);
+      setChildrenCache(next);
       for (const r of valid) {
         const sourceOnly = r.children.map((c) => c.source).filter((n): n is TreeNode => !!n);
         onChildrenLoadedRef.current?.(r.path, sourceOnly);
       }
+      setAwaitingSettle(false);
+      walkerRef.current?.enqueue(missingFolders(next, walkRootsRef.current));
     })();
 
     return () => {
@@ -677,6 +740,8 @@ export function RiftContentTree({
   const handleExpand = useCallback(
     async (node: DualTreeNode) => {
       const key = node.path;
+      // An uncached folder would read the target child list while it may still be writing.
+      if (expansionBlocked && !childrenCacheRef.current.has(node.path)) return;
 
       let wasExpanded = false;
       setExpandedNodes((prev) => {
@@ -713,7 +778,7 @@ export function RiftContentTree({
         }
       }
     },
-    [client, contextId, targetContextId],
+    [client, contextId, targetContextId, expansionBlocked],
   );
 
   const driftRollup = useMemo(
@@ -738,6 +803,7 @@ export function RiftContentTree({
     onCompareItem,
     compareTargetPath,
     driftRollup,
+    expansionBlocked,
   };
 
   // Render a branch of the tree with per-level filtering
@@ -761,22 +827,13 @@ export function RiftContentTree({
           className="flex items-center gap-2 leading-8 text-sm"
           style={{ paddingLeft: depth * 20 }}
         >
-          {/* Shared expand arrow with loading spinner overlay */}
-          <span className="w-4 shrink-0 relative text-center">
-            {node.hasChildren ? (
-              <span
-                onClick={() => handleExpand(node)}
-                className="cursor-pointer text-muted-foreground select-none"
-              >
-                {isExpanded ? '\u25BC' : '\u25B6'}
-              </span>
-            ) : null}
-            {isLoadingNode && (
-              <span className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-background">
-                ...
-              </span>
-            )}
-          </span>
+          <ExpandArrow
+            hasChildren={node.hasChildren}
+            isExpanded={isExpanded}
+            isLoading={isLoadingNode}
+            blocked={expansionBlocked && !childrenCache.has(node.path)}
+            onClick={() => handleExpand(node)}
+          />
 
           <div className="flex-1 min-w-0">
             <SourceCell
@@ -839,12 +896,17 @@ export function RiftContentTree({
           CONTENT TREE
         </div>
         <div className="flex items-center gap-4">
-          {walkProgress.pending + walkProgress.inFlight > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Spinner className="h-3 w-3" />
-              Scanning for drift: {walkProgress.checked} folders checked
-            </span>
-          )}
+          {walkProgress.pending + walkProgress.inFlight > 0 &&
+            (awaitingSettle ? (
+              <span className="text-xs text-muted-foreground">
+                Drift scan paused until the tree is refreshed
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Spinner className="h-3 w-3" />
+                Scanning for drift: {walkProgress.checked} folders checked
+              </span>
+            ))}
           <label className="text-sm text-muted-foreground flex items-center gap-2 cursor-pointer">
             <Checkbox
               checked={showHiddenItems}
