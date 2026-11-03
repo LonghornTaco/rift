@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, ChevronRight } from 'lucide-react';
 import { TransferProgress } from '@/lib/rift/types';
+import type { CacheLagNotice } from '@/lib/rift/post-transfer';
 import { formatProgress } from '@/lib/rift/progress-format';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,14 @@ interface RiftProgressOverlayProps {
   targetEnvName?: string;
   onClose: () => void;
   onCancel?: () => void;
+  /** Parents whose target child list lost pre-existing items after the run (cache lag). */
+  cacheLagNotices?: CacheLagNotice[];
+  /** True when a path timed out while the target was still writing; the tree was not refreshed. */
+  finalizingTimedOut?: boolean;
 }
+
+/** How long a row may sit in `finalizing` before the explanatory hint appears. */
+const FINALIZING_HINT_AFTER_MS = 30000;
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -37,6 +45,8 @@ export function RiftProgressOverlay({
   targetEnvName,
   onClose,
   onCancel,
+  cacheLagNotices = [],
+  finalizingTimedOut = false,
 }: RiftProgressOverlayProps) {
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -71,6 +81,7 @@ export function RiftProgressOverlay({
 
   const isComplete = !isActive && transferProgress.length > 0;
   const hasError = transferProgress.some((tp) => tp.phase === 'error');
+  const hasWarnings = transferProgress.some((tp) => tp.warning);
   const displayElapsed = finalElapsed ?? elapsed;
   const doneCount = transferProgress.filter(
     (tp) => tp.phase === 'complete' || tp.phase === 'error'
@@ -93,11 +104,13 @@ export function RiftProgressOverlay({
       <div
         className={cn(
           'px-4 py-2.5 flex items-center justify-between shrink-0 border-b',
-          isComplete && !hasError
-            ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
-            : isComplete && hasError
-              ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
-              : 'border-border'
+          isComplete && hasError
+            ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+            : isComplete && hasWarnings
+              ? 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+              : isComplete
+                ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+                : 'border-border'
         )}
       >
         <span className="text-sm font-medium flex items-center gap-2">
@@ -105,7 +118,9 @@ export function RiftProgressOverlay({
           {isComplete
             ? hasError
               ? 'Migration completed with errors'
-              : 'Migration complete'
+              : hasWarnings
+                ? 'Migration completed with warnings'
+                : 'Migration complete'
             : 'Migrating content'}
         </span>
         <div className="flex items-center gap-3 text-xs">
@@ -146,6 +161,27 @@ export function RiftProgressOverlay({
         </div>
       </div>
 
+      {/* Post-run notices: only once everything has settled. */}
+      {isComplete && (finalizingTimedOut || cacheLagNotices.length > 0) && (
+        <div className="px-4 py-2 border-b border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/60 text-xs text-amber-900 dark:text-amber-100 space-y-1 shrink-0">
+          {finalizingTimedOut && (
+            <p>
+              One or more items are still being written on the target. The tree was not refreshed; use Refresh once the target finishes.
+            </p>
+          )}
+          {cacheLagNotices.length > 0 && (
+            <div className="space-y-1">
+              <p className="font-medium">Target tree may be lagging</p>
+              {cacheLagNotices.map((n) => (
+                <p key={n.parentPath}>
+                  {n.parentPath}: {n.missing.length} item(s) that existed before are not listed ({n.missing.join(', ')}). They are still in the database; the target environment&apos;s cache has not caught up. Clear the target&apos;s caches (Sitecore admin, cache.aspx, Clear All) or wait, then Refresh.
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Per-path rows */}
       <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border">
         {transferProgress.map((tp) => {
@@ -160,6 +196,13 @@ export function RiftProgressOverlay({
                 ? 'bg-destructive'
                 : 'bg-primary';
           const indeterminate = f.percent == null && f.state === 'active';
+          // The overlay already re-renders every second while active (the
+          // elapsed timer), so this needs no timer of its own.
+          const finalizingStart = tp.events?.find((e) => e.phase === 'finalizing')?.timestamp;
+          const showFinalizingHint =
+            tp.phase === 'finalizing' &&
+            !!finalizingStart &&
+            Date.now() - finalizingStart > FINALIZING_HINT_AFTER_MS;
           return (
             <div key={tp.itemPath}>
               <div
@@ -205,9 +248,17 @@ export function RiftProgressOverlay({
                   )}
                 />
               </div>
+              {showFinalizingHint && (
+                <p className="px-3 pb-2 -mt-1 text-[11px] text-muted-foreground">
+                  The target is writing items to its database. Items with many versions can take several minutes.
+                </p>
+              )}
               {open && (
                 <div className="px-3 pb-3 space-y-2">
                   {tp.error && <p className="text-xs text-destructive">{tp.error}</p>}
+                  {tp.warning && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">{tp.warning}</p>
+                  )}
                   {tp.events && tp.events.length > 0 && (
                     <ul className="font-mono text-[11px] text-muted-foreground space-y-0.5 bg-muted/50 rounded p-2 border border-border max-h-40 overflow-y-auto">
                       {tp.events.map((ev, i) => (

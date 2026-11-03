@@ -16,8 +16,15 @@ import {
   DualTreeNode,
 } from '@/lib/rift/types';
 import { getPresets, savePreset, getSettings, saveSettings, addHistoryEntry } from '@/lib/rift/local-storage';
-import { fetchSites } from '@/lib/rift/api-client';
+import { fetchSites, fetchTreeChildren } from '@/lib/rift/api-client';
 import { transferPath } from '@/lib/rift/content-transfer';
+import {
+  distinctParentPaths,
+  buildCacheLagNotices,
+  hasFinalizingTimeout,
+  runStatus,
+  type CacheLagNotice,
+} from '@/lib/rift/post-transfer';
 import { RiftContentTree } from './RiftContentTree';
 import { RiftCompareView } from './RiftCompareView';
 import { RiftSelectionPanel } from './RiftSelectionPanel';
@@ -62,6 +69,28 @@ interface RiftMigrateProps {
   onBack: () => void;
 }
 
+/**
+ * Fetch the target's current children for each parent, keeping only the
+ * parents whose fetch succeeded. Taken before and after a run to detect a
+ * target whose cached child list has not caught up (see post-transfer.ts).
+ * One call per distinct parent of the selected roots, never per item. Never
+ * throws: a failed fetch just drops that parent from the check.
+ */
+async function snapshotParents(
+  client: ClientSDK,
+  contextId: string,
+  parents: string[]
+): Promise<Map<string, TreeNode[]>> {
+  const results = await Promise.allSettled(
+    parents.map((parentPath) => fetchTreeChildren(client, contextId, parentPath))
+  );
+  const snapshot = new Map<string, TreeNode[]>();
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') snapshot.set(parents[i], r.value);
+  });
+  return snapshot;
+}
+
 export function RiftMigrate({ client, environments, loadedPreset, onBack }: RiftMigrateProps) {
   const [parallelPaths, setParallelPaths] = useState(DEFAULT_SETTINGS.parallelPaths);
 
@@ -89,6 +118,10 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationComplete, setMigrationComplete] = useState(false);
   const [transferProgress, setTransferProgress] = useState<TransferProgress[]>([]);
+  // Post-run findings for the overlay: parents whose target child list lost
+  // pre-existing items (cache lag), and whether any path timed out finalizing.
+  const [cacheLagNotices, setCacheLagNotices] = useState<CacheLagNotice[]>([]);
+  const [finalizingTimedOut, setFinalizingTimedOut] = useState(false);
 
   const [splitPercent, setSplitPercent] = useState(60);
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
@@ -340,6 +373,8 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
   async function executeMigration(paths: MigrationPath[]) {
     setIsMigrating(true);
     setMigrationComplete(false);
+    setCacheLagNotices([]);
+    setFinalizingTimedOut(false);
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const startTime = Date.now();
@@ -355,6 +390,13 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
     setTransferProgress([...progress]);
 
     const settings = getSettings();
+
+    // Snapshot the target's children under each selected root's parent before
+    // anything is written, so the post-run check can tell cache lag (a
+    // pre-existing child no longer listed) apart from a healthy transfer.
+    const parents = distinctParentPaths(paths.map((p) => p.itemPath));
+    const before = await snapshotParents(client, targetEnv.contextId, parents);
+
     const transfers = paths.map((path, index) => {
       return transferPath(client, {
         sourceContextId: sourceEnv.contextId,
@@ -378,6 +420,13 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
           progress[index] = { ...prev, phase, chunksComplete, chunksTotal, events };
           setTransferProgress([...progress]);
         },
+      }).then((result) => {
+        // TransferredWithErrors: the items that did transfer are in the
+        // database, so the row completes, but the run is recorded as partial.
+        if (result.warning) {
+          progress[index] = { ...progress[index], warning: result.warning };
+          setTransferProgress([...progress]);
+        }
       }).catch((err) => {
         const prev = progress[index];
         const events = [...(prev.events ?? []), {
@@ -400,7 +449,7 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // User cancelled — handled gracefully
+        // User cancelled - handled gracefully
       } else {
         console.error('[Rift] Migration failed:', err);
       }
@@ -411,7 +460,6 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
 
       // Save history entry
       const elapsed = Date.now() - startTime;
-      const hasErrors = progress.some((p) => p.phase === 'error');
       addHistoryEntry({
         id: crypto.randomUUID(),
         date: new Date().toISOString(),
@@ -419,15 +467,25 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
         targetEnvName: targetEnv.tenantDisplayName,
         paths: paths.map((p) => ({ itemPath: p.itemPath, scope: p.scope })),
         elapsedMs: elapsed,
-        status: hasErrors ? (progress.every((p) => p.phase === 'error') ? 'failed' : 'partial') : 'success',
+        status: runStatus(progress),
       });
 
       // Refresh the content tree so the target side reflects what was just
-      // migrated. Without this, migrated items keep showing as ghost/drift rows
-      // until a manual Refresh. Uses the soft key so the user's expanded tree
-      // state is preserved. Only needed when at least one path completed.
-      if (progress.some((p) => p.phase === 'complete')) {
+      // migrated, but ONLY once every path has truly finished on the target.
+      // A path that timed out while finalizing may still be writing; reading
+      // the tree then caches a transitional child list on the CM and makes the
+      // migration look like it deleted items. In that case skip the refresh
+      // and tell the user to refresh later. Uses the soft key so the user's
+      // expanded tree state is preserved.
+      const timedOut = hasFinalizingTimeout(progress);
+      setFinalizingTimedOut(timedOut);
+      if (!timedOut && progress.some((p) => p.phase === 'complete')) {
         setTreeSoftRefreshKey((k) => k + 1);
+        // Cache-lag check: every child a snapshotted parent had before the run
+        // must still be listed after it, because the merge strategy Rift sends
+        // never deletes. Anything missing is the target's cache, not data loss.
+        const after = await snapshotParents(client, targetEnv.contextId, parents);
+        setCacheLagNotices(buildCacheLagNotices(before, after));
       }
     }
   }
@@ -779,6 +837,8 @@ export function RiftMigrate({ client, environments, loadedPreset, onBack }: Rift
               <RiftProgressOverlay
                 isActive={isMigrating}
                 transferProgress={transferProgress}
+                cacheLagNotices={cacheLagNotices}
+                finalizingTimedOut={finalizingTimedOut}
                 sourceEnvName={
                   environments.find((e) => e.tenantId === selectedSourceEnvId)?.tenantDisplayName
                 }
